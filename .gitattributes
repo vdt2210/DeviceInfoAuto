@@ -1,0 +1,5 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Ensure Markdown and source files are UTF-8
+*.md text eol=lf

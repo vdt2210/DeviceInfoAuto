@@ -1,0 +1,38 @@
+# Build
+build/
+app/build/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Gradle
+.gradle/
+**/gradle-app.setting
+!gradle-wrapper.jar
+
+# Local
+local.properties
+*.log
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+*.swp
+*.swo
+
+# Android Studio / IntelliJ
+/captures
+.externalNativeBuild
+.cxx
+*.hprof
+
+# Keystore (giữ bí mật)
+*.jks
+*.keystore
+
+# Kotlin
+*.class
