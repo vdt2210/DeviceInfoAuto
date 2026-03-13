@@ -1,38 +1,50 @@
-# Build
+# Build (sinh ra khi bấm Build, không cần commit)
 build/
 app/build/
+**/intermediates/
+**/generated/
+**/outputs/
+out/
 *.apk
 *.aab
 *.ap_
 *.dex
+*.jar
+!gradle-wrapper.jar
 
 # Gradle
 .gradle/
 **/gradle-app.setting
 !gradle-wrapper.jar
 
-# Local
+# Local (mỗi máy một khác, tạo/sửa khi mở project)
 local.properties
 *.log
 
-# IDE
+# IDE (cấu hình cá nhân / sinh ra từ IDE)
 .idea/
 *.iml
 *.ipr
 *.iws
 .DS_Store
+Thumbs.db
 *.swp
 *.swo
+*.orig
+.navigation/
 
 # Android Studio / IntelliJ
 /captures
 .externalNativeBuild
 .cxx
 *.hprof
+lint-results*
+test-results/
+reports/
 
-# Keystore (giữ bí mật)
+# Keystore (bí mật, không commit)
 *.jks
 *.keystore
 
-# Kotlin
+# Kotlin / Java (file biên dịch, sinh ra khi build)
 *.class
