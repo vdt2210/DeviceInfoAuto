@@ -15,7 +15,12 @@ data class DeviceInfo(
     val batteryTemperatureCelsius: Float,
     val batteryVoltageV: Float,
     val chargingStatus: String,
+    val plugged: String,
     val health: String,
+    val technology: String,
+    val currentNowMicroA: Long,
+    val chargeCounterMicroAh: Long,
+    val cycleCount: Int?,
     val storageSummary: String,
     val ramSummary: String,
     val manufacturer: String,
@@ -64,6 +69,29 @@ object DeviceInfoProvider {
         val voltageMv = batteryIntent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
         val voltageV = voltageMv / 1000f
 
+        val plugged = batteryIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
+        val pluggedStr = when (plugged) {
+            BatteryManager.BATTERY_PLUGGED_AC -> "AC"
+            BatteryManager.BATTERY_PLUGGED_USB -> "USB"
+            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless"
+            else -> "None"
+        }
+
+        val technology = batteryIntent.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY)?.ifEmpty { null } ?: "Unknown"
+
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val currentNowMicroA = if (bm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        } else 0L
+        val chargeCounterMicroAh = if (bm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+        } else 0L
+
+        val cycleCount = if (Build.VERSION.SDK_INT >= 34) {
+            val v = batteryIntent.getIntExtra(BatteryManager.EXTRA_CYCLE_COUNT, -1)
+            if (v >= 0) v else null
+        } else null
+
         val stat = StatFs(Environment.getDataDirectory().path)
         val totalBytes = stat.totalBytes
         val freeBytes = stat.availableBytes
@@ -91,7 +119,12 @@ object DeviceInfoProvider {
             batteryTemperatureCelsius = tempCelsius,
             batteryVoltageV = voltageV,
             chargingStatus = chargingStatus,
+            plugged = pluggedStr,
             health = healthStr,
+            technology = technology,
+            currentNowMicroA = currentNowMicroA,
+            chargeCounterMicroAh = chargeCounterMicroAh,
+            cycleCount = cycleCount,
             storageSummary = storageSummary,
             ramSummary = ramSummary,
             manufacturer = manufacturer,
@@ -119,7 +152,12 @@ object DeviceInfoProvider {
         batteryTemperatureCelsius = 0f,
         batteryVoltageV = 0f,
         chargingStatus = "Unknown",
+        plugged = "None",
         health = "Unknown",
+        technology = "Unknown",
+        currentNowMicroA = 0L,
+        chargeCounterMicroAh = 0L,
+        cycleCount = null,
         storageSummary = "—",
         ramSummary = "—",
         manufacturer = "Unknown",

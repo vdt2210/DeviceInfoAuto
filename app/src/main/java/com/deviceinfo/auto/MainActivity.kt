@@ -4,8 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.BatteryManager
+import android.content.res.Configuration
 import android.graphics.Color
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -18,6 +19,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
@@ -34,6 +36,13 @@ class MainActivity : AppCompatActivity() {
         window.decorView.systemUiVisibility =
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        val isNightMode = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        controller.isAppearanceLightStatusBars = !isNightMode
+        controller.isAppearanceLightNavigationBars = !isNightMode
+
         setContentView(R.layout.activity_main)
         applyStatusBarInset()
         showDeviceInfoList()
@@ -47,7 +56,12 @@ class MainActivity : AppCompatActivity() {
                 WindowInsetsCompat.Type.statusBars() or
                     WindowInsetsCompat.Type.displayCutout()
             )
-            v.setPadding(v.paddingLeft, initialPaddingTop + sysBars.top, v.paddingRight, v.paddingBottom)
+            v.setPadding(
+                v.paddingLeft,
+                initialPaddingTop + sysBars.top,
+                v.paddingRight,
+                v.paddingBottom
+            )
             insets
         }
     }
@@ -99,6 +113,14 @@ class MainActivity : AppCompatActivity() {
                 else -> R.drawable.ic_row_temp_normal
             }
 
+        fun pluggedIconRes(plugged: String): Int =
+            when (plugged) {
+                "AC" -> R.drawable.ic_row_plugged
+                "USB" -> R.drawable.ic_row_plugged_usb
+                "Wireless" -> R.drawable.ic_row_plugged_wireless
+                else -> R.drawable.ic_row_plugged_none
+            }
+
         fun levelText(info: DeviceInfo): String {
             val base = "${info.batteryLevel}% • ${info.chargingStatus}"
             return if (info.isPowerSaveMode) "$base • Saver on" else base
@@ -107,12 +129,29 @@ class MainActivity : AppCompatActivity() {
         if (adapter == null) {
             // Build static + initial dynamic content once
             items.clear()
+            fun currentText(microA: Long): String {
+                if (microA == 0L) return "—"
+                val ma = microA / 1000.0
+                return if (kotlin.math.abs(ma) >= 1000) String.format("%.2f A", ma / 1000) else String.format("%.0f mA", ma)
+            }
+            fun chargeCounterText(microAh: Long): String {
+                if (microAh <= 0L) return "—"
+                val mah = microAh / 1000.0
+                return if (mah >= 1000) String.format("%.2f Ah", mah / 1000) else String.format("%.0f mAh", mah)
+            }
+            fun cycleCountText(c: Int?): String = c?.toString() ?: "—"
+
             items += listOf(
                 InfoItem.Section("Battery"),
                 InfoItem.Row("Level", levelText(info), levelIconRes(info.batteryLevel, info.isPowerSaveMode)),
+                InfoItem.Row("Plugged", info.plugged, pluggedIconRes(info.plugged)),
                 InfoItem.Row("Health", info.health, healthIconRes(info.health)),
+                InfoItem.Row("Technology", info.technology, R.drawable.ic_row_battery_full),
                 InfoItem.Row("Temperature", String.format("%.1f °C", info.batteryTemperatureCelsius), temperatureIconRes(info.batteryTemperatureCelsius)),
                 InfoItem.Row("Voltage", String.format("%.2f V", info.batteryVoltageV), R.drawable.ic_row_voltage),
+                InfoItem.Row("Current", currentText(info.currentNowMicroA), R.drawable.ic_row_current),
+                InfoItem.Row("Charge counter", chargeCounterText(info.chargeCounterMicroAh), R.drawable.ic_row_charge_counter),
+                InfoItem.Row("Cycle count", cycleCountText(info.cycleCount), R.drawable.ic_row_cycle_count),
                 InfoItem.Section("Storage & memory"),
                 InfoItem.Row("Storage", info.storageSummary, R.drawable.ic_row_storage),
                 InfoItem.Row("RAM", info.ramSummary, R.drawable.ic_row_memory),
@@ -164,44 +203,56 @@ class MainActivity : AppCompatActivity() {
                 else -> R.drawable.ic_row_temp_normal
             }
 
+        fun pluggedIconRes(plugged: String): Int =
+            when (plugged) {
+                "AC" -> R.drawable.ic_row_plugged
+                "USB" -> R.drawable.ic_row_plugged_usb
+                "Wireless" -> R.drawable.ic_row_plugged_wireless
+                else -> R.drawable.ic_row_plugged_none
+            }
+
         fun levelText(info: DeviceInfo): String {
             val base = "${info.batteryLevel}% • ${info.chargingStatus}"
             return if (info.isPowerSaveMode) "$base • Saver on" else base
         }
 
+            fun currentText(microA: Long): String {
+                if (microA == 0L) return "—"
+                val ma = microA / 1000.0
+                return if (kotlin.math.abs(ma) >= 1000) String.format("%.2f A", ma / 1000) else String.format("%.0f mA", ma)
+            }
+            fun chargeCounterText(microAh: Long): String {
+                if (microAh <= 0L) return "—"
+                val mah = microAh / 1000.0
+                return if (mah >= 1000) String.format("%.2f Ah", mah / 1000) else String.format("%.0f mAh", mah)
+            }
+            fun cycleCountText(c: Int?): String = c?.toString() ?: "—"
+
         for ((index, item) in items.withIndex()) {
             if (item is InfoItem.Row) {
                 when (item.title) {
-                    "Level", "Health", "Temperature", "Voltage" ->
+                    "Level", "Plugged", "Health", "Technology", "Temperature", "Voltage", "Current", "Charge counter", "Cycle count" ->
                         if (updateBattery) {
-                            when (item.title) {
-                                "Level" -> {
-                                    items[index] = item.copy(
-                                        value = levelText(info),
-                                        iconResId = levelIconRes(info.batteryLevel, info.isPowerSaveMode)
-                                    )
-                                }
-
-                                "Health" -> {
-                                    items[index] = item.copy(
-                                        value = info.health,
-                                        iconResId = healthIconRes(info.health)
-                                    )
-                                }
-
-                                "Temperature" -> {
-                                    items[index] = item.copy(
-                                        value = String.format("%.1f °C", info.batteryTemperatureCelsius),
-                                        iconResId = temperatureIconRes(info.batteryTemperatureCelsius)
-                                    )
-                                }
-
-                                "Voltage" -> {
-                                    items[index] = item.copy(
-                                        value = String.format("%.2f V", info.batteryVoltageV),
-                                        iconResId = R.drawable.ic_row_voltage
-                                    )
-                                }
+                            items[index] = when (item.title) {
+                                "Level" -> item.copy(
+                                    value = levelText(info),
+                                    iconResId = levelIconRes(info.batteryLevel, info.isPowerSaveMode)
+                                )
+                                "Plugged" -> item.copy(value = info.plugged, iconResId = pluggedIconRes(info.plugged))
+                                "Health" -> item.copy(value = info.health, iconResId = healthIconRes(info.health))
+                                "Technology" -> item.copy(value = info.technology, iconResId = R.drawable.ic_row_battery_full)
+                                "Temperature" -> item.copy(
+                                    value = String.format("%.1f °C", info.batteryTemperatureCelsius),
+                                    iconResId = temperatureIconRes(info.batteryTemperatureCelsius)
+                                )
+                                "Voltage" -> item.copy(
+                                    value = String.format("%.2f V", info.batteryVoltageV),
+                                    iconResId = R.drawable.ic_row_voltage
+                                )
+                                "Current" -> item.copy(value = currentText(info.currentNowMicroA), iconResId = R.drawable.ic_row_current)
+                                "Charge counter" -> item.copy(value = chargeCounterText(info.chargeCounterMicroAh), iconResId = R.drawable.ic_row_charge_counter)
+                                "Cycle count" -> item.copy(value = cycleCountText(info.cycleCount), iconResId = R.drawable.ic_row_cycle_count)
+                                else -> item
                             }
                             adapter?.notifyItemChanged(index)
                         }

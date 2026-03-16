@@ -4,7 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:paddingHorizontal="8dp"
+    android:background="?android:attr/colorBackground">
 
     <TextView
         android:layout_width="match_parent"
@@ -12,11 +13,13 @@
         android:text="@string/title_device_information"
         android:textSize="24sp"
         android:textStyle="bold"
-        android:paddingBottom="16dp" />
+        android:paddingBottom="8dp"
+        android:textColor="?android:attr/textColorPrimary" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/list"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:clipToPadding="false" />
+        android:clipToPadding="false"
+        android:paddingBottom="32dp" />
 </LinearLayout>

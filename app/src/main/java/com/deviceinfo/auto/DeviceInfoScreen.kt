@@ -63,15 +63,40 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
                 else -> icon(R.drawable.ic_row_temp_normal)
             }
 
+        fun pluggedIcon(plugged: String): CarIcon =
+            when (plugged) {
+                "AC" -> icon(R.drawable.ic_row_plugged)
+                "USB" -> icon(R.drawable.ic_row_plugged_usb)
+                "Wireless" -> icon(R.drawable.ic_row_plugged_wireless)
+                else -> icon(R.drawable.ic_row_plugged_none)
+            }
+
         fun levelText(info: DeviceInfo): String {
             val base = "${info.batteryLevel}% • ${info.chargingStatus}"
             return if (info.isPowerSaveMode) "$base • Saver on" else base
         }
+        fun currentText(microA: Long): String {
+            if (microA == 0L) return "—"
+            val ma = microA / 1000.0
+            return if (kotlin.math.abs(ma) >= 1000) String.format("%.2f A", ma / 1000) else String.format("%.0f mA", ma)
+        }
+        fun chargeCounterText(microAh: Long): String {
+            if (microAh <= 0L) return "—"
+            val mah = microAh / 1000.0
+            return if (mah >= 1000) String.format("%.2f Ah", mah / 1000) else String.format("%.0f mAh", mah)
+        }
+        fun cycleCountText(c: Int?): String = c?.toString() ?: "—"
 
         val batteryList = ItemList.Builder()
             .addItem(row("Level", levelText(info), levelIcon(info.batteryLevel, info.isPowerSaveMode)))
+            .addItem(row("Plugged", info.plugged, pluggedIcon(info.plugged)))
             .addItem(row("Health", info.health, healthIcon(info.health)))
+            .addItem(row("Technology", info.technology, icon(R.drawable.ic_row_battery_full)))
             .addItem(row("Temperature", String.format("%.1f °C", info.batteryTemperatureCelsius), temperatureIcon(info.batteryTemperatureCelsius)))
+            .addItem(row("Voltage", String.format("%.2f V", info.batteryVoltageV), icon(R.drawable.ic_row_voltage)))
+            .addItem(row("Current", currentText(info.currentNowMicroA), icon(R.drawable.ic_row_current)))
+            .addItem(row("Charge counter", chargeCounterText(info.chargeCounterMicroAh), icon(R.drawable.ic_row_charge_counter)))
+            .addItem(row("Cycle count", cycleCountText(info.cycleCount), icon(R.drawable.ic_row_cycle_count)))
             .build()
         val memoryList = ItemList.Builder()
             .addItem(row("RAM", info.ramSummary, icon(R.drawable.ic_row_memory)))
