@@ -1,25 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/root"
+<androidx.swiperefreshlayout.widget.SwipeRefreshLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/swipe_refresh"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:paddingHorizontal="8dp"
-    android:background="?android:attr/colorBackground">
+    android:layout_height="match_parent">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/title_device_information"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:paddingBottom="8dp"
-        android:textColor="?android:attr/textColorPrimary" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/list"
+    <LinearLayout
+        android:id="@+id/root"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:clipToPadding="false"
-        android:paddingBottom="32dp" />
-</LinearLayout>
+        android:orientation="vertical"
+        android:paddingHorizontal="8dp"
+        android:background="?android:attr/colorBackground">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/title_device_information"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:paddingBottom="8dp"
+            android:textColor="?android:attr/textColorPrimary" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingBottom="32dp" />
+    </LinearLayout>
+</androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
