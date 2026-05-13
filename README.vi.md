@@ -2,82 +2,94 @@
 
 **Tác giả:** [vdt2210](https://github.com/vdt2210)
 
-Ứng dụng Android hiển thị thông tin thiết bị trên **điện thoại** (MainActivity) và **Android Auto** (Car App Library): pin, trạng thái sạc, nhiệt độ, điện áp, bộ nhớ, RAM, hãng, model, phiên bản Android, security patch và build.
+**Ngôn ngữ:** [English](README.md) | Tiếng Việt (trang này)
 
-## Yêu cầu
+Ứng dụng Android hiển thị thông tin của thiết bị trên **điện thoại** và **Android Auto**.
 
-- Android Studio Ladybug trở lên (hoặc IDE tương thích)
-- Android SDK 34
-- Min SDK 30 (Android 11+)
-- Thiết bị hoặc emulator có Android Auto, hoặc ứng dụng [Android Auto for phone screens](https://support.google.com/androidauto/answer/6345494)
+Google thường yêu cầu ứng dụng Android Auto phải được cài qua **Google Play**. Tuy nhiên, vẫn có cách cài APK bằng [ứng dụng bên thứ 3](#ứng-dụng-cài-apk-bên-thứ-3-có-thể-tham-khảo).
+
+---
+
+## Hướng dẫn cài đặt
+
+### Yêu cầu thiết bị
+
+- **Android 11 trở lên** (API 30+)
+
+### Cài trên điện thoại
+
+1. Tải **APK bản phát hành** mới nhất tại **[GitHub Releases](https://github.com/vdt2210/DeviceInfoAuto/releases)**.
+2. Dùng [ứng dụng bên thứ 3](#ứng-dụng-cài-apk-bên-thứ-3-có-thể-tham-khảo) và làm theo hướng dẫn của họ để cài APK.
+
+### Thêm ứng dụng trên Android Auto
+
+1. Cho phép ứng dụng hiện trên **màn hình xe**: **Cài đặt hệ thống** → tìm **Android Auto** → **Tùy chỉnh trình khởi chạy** (hoặc tên tương tự) → bật **Device Info** nếu ứng dụng chưa được bật. **Trường hợp không tìm thấy ứng dụng trong danh sách ứng dụng, hãy tiếp tục các bước tiếp theo**.
+2. Bật **chế độ nhà phát triển** của Android Auto: **Android Auto** → chạm nhiều lần vào dòng **Phiên bản** cho đến khi có thông báo bật chế độ nhà phát triển → **OK**.
+3. Trong **Android Auto**: menu góc phải trên cùng (ba chấm) → **Cài đặt nhà phát triển** → bật **Nguồn không xác định**. Không bật thì ứng dụng cài ngoài Play thường không hiện trên Android Auto. Quay lại **bước 1** để thêm ứng dụng vào Android Auto.
+4. Trường hợp đã làm theo hướng dẫn mà ứng dụng vẫn không có trong danh sách của Android Auto, APK có thể chưa được cài đúng cách; hãy gỡ và cài lại theo đúng hướng dẫn của ứng dụng bên thứ 3.
+
+---
+
+## Ứng dụng cài APK bên thứ 3 có thể tham khảo
+
+- **[fcaronte/KingInstaller](https://github.com/fcaronte/KingInstaller)**
+
+### Miễn trừ trách nhiệm và rủi ro bảo mật
+
+- Khi dùng các công cụ bên thứ 3, bạn tự chịu trách nhiệm với rủi ro về **an toàn dữ liệu, bảo mật thiết bị và tính ổn định hệ thống**.
+- Chỉ tải APK từ nguồn tin cậy, kiểm tra kỹ phiên bản trước khi cài, và tránh cài trên thiết bị chứa dữ liệu nhạy cảm nếu chưa đánh giá rủi ro.
+
+---
+
+## Dành cho nhà phát triển
+
+### Yêu cầu project
+
+**Máy tính**
+
+- **Android Studio** (Ladybug trở lên)
+- **JDK 17**
+- **Android SDK Platform API 36**
+- **[Desktop Head Unit (DHU)](https://developer.android.com/training/cars/testing/dhu)**
+
+**Thiết bị Android**
+
+- **Android 11+**
+- **Android Auto**
+
+**Tham chiếu Gradle (`app/build.gradle.kts`)**
+
+- `compileSdk` → **36**
+- `minSdk` → **30** (Android 11+)
+- `targetSdk` → **34**
+- `namespace` → `com.deviceinfo.auto`
+- `applicationId` → `com.vdt2210.deviceinfo`
+
+### Hướng dẫn cho nhà phát triển
+
+1. **Clone** repo này về máy.
+2. Mở thư mục project trong **Android Studio** và **Sync Project with Gradle Files**.
+3. Chạy cấu hình **app** trên **thiết bị thật** có **Android 11+** (Android Auto thường không thử đủ trên emulator thông thường).
+4. Để thử **giao diện xe**: bật chế độ nhà phát triển **Android Auto** và **Nguồn không xác định** trên điện thoại; kết nối **DHU** trên PC nếu dùng — [Android Auto — DHU](https://developer.android.com/training/cars/testing/dhu).
+5. Để tạo **APK release đã ký**, cấu hình ký app trong Android Studio hoặc Gradle, rồi chạy `./gradlew assembleRelease`.
 
 ## Cấu trúc project
 
-- `MainActivity` – Giao diện điện thoại (danh sách RecyclerView)
-- `DeviceInfoCarAppService` – Car app service (category IOT)
-- `DeviceInfoSession` – Session tạo màn hình chính cho Android Auto
-- `DeviceInfoScreen` – Màn hình Android Auto (`ListTemplate` với các dòng thông tin)
-- `DeviceInfoProvider` – Đọc pin, nhiệt độ, bộ nhớ, RAM và thông tin hệ thống
+- `MainActivity` – Giao diện điện thoại (RecyclerView)
+- `DeviceInfoCarAppService` – Car app service (IOT)
+- `DeviceInfoSession` – Session màn hình Android Auto
+- `DeviceInfoScreen` – UI xe (`ListTemplate`)
+- `DeviceInfoProvider` – Đọc pin, bộ nhớ, RAM, thông tin hệ thống
 
-## Thông tin hiển thị
-
-- **Pin** – Mức (%), trạng thái sạc, điện áp (V)
-- **Nhiệt độ pin** – °C (từ `BatteryManager`)
-- **Sức khỏe pin** – Good, Cold, Overheat, v.v.
-- **Bộ nhớ** – Trống / tổng bộ nhớ trong (GB)
-- **RAM** – Trống / tổng (GB)
-- **Hãng** – Nhà sản xuất thiết bị
-- **Model** – Tên model thiết bị
-- **Hệ thống** – Phiên bản Android và API level
-- **Security patch** – Mức security patch của Android
-- **Build** – Build ID
-
-## Chạy ứng dụng
-
-1. Mở project trong Android Studio.
-2. Sync Gradle.
-3. Chạy trên thiết bị thật (Android Auto không hỗ trợ đầy đủ trên emulator) hoặc dùng **Desktop Head Unit** để test:
-   - Bật **Tùy chọn nhà phát triển** trên điện thoại.
-   - Trong cài đặt app **Android Auto**, bật **Nguồn không xác định** và thêm máy phát triển.
-   - Cài và chạy [Desktop Head Unit](https://developer.android.com/training/cars/apps/auto#desktop_head_unit) trên PC, kết nối điện thoại.
-
-4. Trên điện thoại: **Cài đặt → Ứng dụng → Android Auto → Tùy chỉnh launcher** và bật **Device Info** để app xuất hiện trong danh sách Android Auto.
-
-**Vì sao app không hiện (APK release / Tùy chỉnh launcher):** Ứng dụng dùng **Android for Cars App Library** không được phép từ "nguồn không xác định" trên Android Auto. APK debug hoặc sideload **sẽ không** hiện trong danh sách app trên xe. Để thấy app trên head unit thật cần phân phối qua **Google Play** (và đáp ứng chính sách car app). Khi phát triển, dùng **Desktop Head Unit (DHU)** trên PC với điện thoại cắm USB; app có thể hiện khi chạy từ Android Studio.
-
-## Build từ dòng lệnh
+## Build từ mã nguồn (tùy chọn)
 
 ```bash
 cd DeviceInfoAuto
 ./gradlew assembleDebug
 ```
 
-APK: `app/build/outputs/apk/debug/app-debug.apk`
-
-## Test không cần xe
-
-- Dùng **Android Auto for phone screens** trên điện thoại và mở app từ launcher, hoặc
-- Dùng **Desktop Head Unit** trên máy tính, điện thoại cắm USB và bật chế độ nhà phát triển Android Auto.
-
-## Sẵn sàng Android Auto (checklist)
-
-App được cấu hình để **có thể** thêm vào Android Auto khi phân phối qua kênh được duyệt (ví dụ Google Play):
-
-| Yêu cầu | Trạng thái |
-|---------|------------|
-| `CarAppService` với action `androidx.car.app.CarAppService` | Có – `DeviceInfoCarAppService` |
-| Category intent-filter (ví dụ IOT) | Có – IOT |
-| `android:exported="true"` trên service | Có |
-| Meta-data `com.google.android.gms.car.application` → `@xml/automotive_app_desc` | Có |
-| `automotive_app_desc.xml` với `<uses name="template" />` | Có |
-| `androidx.car.app.minCarApiLevel` trong manifest | Có – `1` |
-| `HostValidator` (ví dụ cho phép host khi test) | Có – `ALLOW_ALL_HOSTS_VALIDATOR` |
-| Dùng template Car App Library (ví dụ `ListTemplate`) | Có – `ListTemplate` trong `DeviceInfoScreen` |
-
-App chỉ hiện trên **xe thật** khi cài từ Play Store (hoặc nguồn được duyệt). Với **bản debug**, dùng **Desktop Head Unit (DHU)** để test.
-
-**Hiển thị Android Auto:** App dùng `ListTemplate` nên mặc định **full màn**. Chế độ **chia đôi với bản đồ** do head unit / Android Auto quyết định (tùy xe và phiên bản); người dùng có thể chuyển giữa app và bản đồ từ giao diện xe.
+Kết quả: `app/build/outputs/apk/debug/app-debug.apk` (hoặc `./gradlew assembleRelease` nếu tự ký bản release).
 
 ## Host validator
 
-App dùng `HostValidator.ALLOW_ALL_HOSTS_VALIDATOR` nên mọi host Android Auto đều chạy được. Trong production nên giới hạn bằng host validator riêng.
+Ứng dụng dùng `HostValidator.ALLOW_ALL_HOSTS_VALIDATOR` để mọi host Android Auto đều có thể chạy ứng dụng khi phát triển và thử sideload. Bản production phát hành rộng (ví dụ qua Google Play) nên cân nhắc thu hẹp host validator.
