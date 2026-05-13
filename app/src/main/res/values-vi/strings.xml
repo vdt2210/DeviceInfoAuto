@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Thông tin thiết bị</string>
+
+    <string name="menu_settings">Cài đặt</string>
+    <string name="menu_app_info">Giới thiệu</string>
+
+    <string name="settings_title">Cài đặt</string>
+    <string name="settings_section_language">Ngôn ngữ</string>
+    <string name="settings_section_appearance">Giao diện</string>
+    <string name="theme_system">Theo hệ thống</string>
+    <string name="theme_light">Sáng</string>
+    <string name="theme_dark">Tối</string>
+    <string name="language_system">Theo hệ thống</string>
+
+    <string name="app_info_title">Giới thiệu</string>
+    <string name="about_section_overview">Tổng quan</string>
+    <string name="about_description">Xem nhanh thông tin điện thoại hoặc máy tính bảng—tiện khi cần kiểm tra nhanh và khi dùng cùng Android Auto.</string>
+    <string name="about_section_libraries">Thư viện mã nguồn mở</string>
+    <string name="about_section_links">Liên kết</string>
+    <string name="link_author_profile">Tác giả trên GitHub</string>
+    <string name="link_source_repo">Mã nguồn</string>
+    <string name="link_open_latest_release">Bản phát hành mới nhất</string>
+    <string name="about_copyright">© %1$d - Tạo bởi %2$s</string>
+
+    <string name="storage_free_of">%1$s còn trống / %2$s</string>
+
+    <string name="sim_state_ready">Sẵn sàng</string>
+    <string name="sim_state_absent">Không có SIM</string>
+    <string name="sim_state_pin_required">Cần mã PIN</string>
+    <string name="sim_state_puk_required">Cần mã PUK</string>
+    <string name="sim_state_network_locked">Khóa mạng</string>
+    <string name="sim_state_not_ready">Chưa sẵn sàng</string>
+    <string name="sim_state_perm_disabled">Đã tắt</string>
+    <string name="sim_state_loaded">Đã nạp</string>
+
+    <string name="sim_kind_physical">SIM vật lý</string>
+
+    <string name="word_unknown">Không rõ</string>
+
+    <string name="section_battery">Pin</string>
+    <string name="section_display">Màn hình</string>
+    <string name="section_storage_memory">Bộ nhớ</string>
+    <string name="section_network">Mạng</string>
+    <string name="section_device">Thiết bị</string>
+    <string name="section_processor">Bộ xử lý</string>
+
+    <string name="row_level">Mức pin</string>
+    <string name="row_plugged">Đang cắm</string>
+    <string name="row_health">Tình trạng</string>
+    <string name="row_technology">Công nghệ pin</string>
+    <string name="row_temperature">Nhiệt độ</string>
+    <string name="row_voltage">Điện áp</string>
+    <string name="row_current">Dòng điện</string>
+    <string name="row_power">Công suất</string>
+    <string name="row_charge_counter">Điện lượng</string>
+    <string name="row_cycle_count">Số chu kỳ sạc</string>
+    <string name="row_resolution">Độ phân giải</string>
+    <string name="row_density">Mật độ điểm ảnh</string>
+    <string name="row_refresh_rate">Tần số quét</string>
+    <string name="row_storage">Ổ lưu trữ</string>
+    <string name="row_connection">Kết nối</string>
+    <string name="network_cellular">Di động</string>
+    <string name="row_cellular">@string/network_cellular</string>
+    <string name="row_carrier">Nhà mạng</string>
+    <string name="row_sim_state">Trạng thái SIM</string>
+    <string name="row_sim_country">Quốc gia SIM</string>
+    <string name="row_sim_type">Loại SIM</string>
+    <string name="row_metered">Mạng tính phí</string>
+    <string name="row_roaming">Chuyển vùng</string>
+    <string name="row_bandwidth">Băng thông</string>
+    <string name="row_device_name">Tên thiết bị</string>
+    <string name="row_model">Mẫu máy</string>
+    <string name="row_manufacturer">Hãng</string>
+    <string name="row_codename">Tên mã</string>
+    <string name="row_system">Hệ điều hành</string>
+    <string name="row_security_patch">Bản vá bảo mật</string>
+    <string name="row_build">Bản build</string>
+    <string name="row_cpu_freq">Tần số CPU</string>
+    <string name="row_cpu_freq_current">Tần số CPU hiện tại</string>
+
+    <string name="battery_status_charging">Đang sạc</string>
+    <string name="battery_status_discharging">Đang xả</string>
+    <string name="battery_status_full">Đầy</string>
+    <string name="battery_status_not_charging">Không sạc</string>
+    <string name="battery_status_unknown">@string/word_unknown</string>
+    <string name="saver_on">Tiết kiệm pin bật</string>
+
+    <string name="plugged_wireless">Không dây</string>
+    <string name="plugged_none">Không</string>
+
+    <string name="health_good">Tốt</string>
+    <string name="health_unknown">@string/word_unknown</string>
+    <string name="health_cold">Lạnh</string>
+    <string name="health_dead">Hỏng</string>
+    <string name="health_overheat">Quá nhiệt</string>
+    <string name="health_over_voltage">Quá áp</string>
+    <string name="health_unspecified_failure">Lỗi không xác định</string>
+
+    <string name="connection_cellular">@string/network_cellular</string>
+    <string name="connection_ethernet">Mạng dây</string>
+    <string name="connection_online">Trực tuyến</string>
+    <string name="connection_offline">Ngoại tuyến</string>
+    <string name="connection_unknown">@string/word_unknown</string>
+
+    <string name="value_yes">Có</string>
+    <string name="value_no">Không</string>
+    <string name="value_on">Bật</string>
+    <string name="value_off">Tắt</string>
+
+    <string name="car_toast_refresh_wait">Vui lòng đợi trước khi làm mới lại</string>
+    <string name="car_toast_refreshing">Đang làm mới…</string>
+</resources>

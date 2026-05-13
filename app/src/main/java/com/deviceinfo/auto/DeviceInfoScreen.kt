@@ -21,7 +21,7 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
 
     override fun onGetTemplate(): Template {
         val info = DeviceInfoProvider.get(carContext.applicationContext)
-        val ctx = carContext.applicationContext
+        val ctx = carContext
         fun icon(resId: Int): CarIcon {
             val white = Color.WHITE
             val tint = CarColor.createCustom(white, white)
@@ -38,19 +38,49 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
 
         fun rowForKey(key: String): Row = when (key) {
             DeviceInfoUiShared.Row.LEVEL ->
-                row(key, DeviceInfoUiShared.levelText(info), icon(DeviceInfoUiShared.levelIconRes(info.batteryLevel, info.isPowerSaveMode)))
+                row(
+                    DeviceInfoUiShared.rowTitle(ctx, key),
+                    DeviceInfoUiShared.levelText(ctx, info),
+                    icon(DeviceInfoUiShared.levelIconRes(info.batteryLevel, info.isPowerSaveMode))
+                )
             DeviceInfoUiShared.Row.PLUGGED ->
-                row(key, info.plugged, icon(DeviceInfoUiShared.pluggedIconRes(info.plugged)))
+                row(
+                    DeviceInfoUiShared.rowTitle(ctx, key),
+                    DeviceInfoUiShared.pluggedLabel(ctx, info.plugged),
+                    icon(DeviceInfoUiShared.pluggedIconRes(info.plugged))
+                )
             DeviceInfoUiShared.Row.HEALTH ->
-                row(key, info.health, icon(DeviceInfoUiShared.healthIconRes(info.health)))
+                row(
+                    DeviceInfoUiShared.rowTitle(ctx, key),
+                    DeviceInfoUiShared.healthLabel(ctx, info.health),
+                    icon(DeviceInfoUiShared.healthIconRes(info.health))
+                )
             DeviceInfoUiShared.Row.TEMPERATURE ->
-                row(key, String.format("%.1f °C", info.batteryTemperatureCelsius), icon(DeviceInfoUiShared.temperatureIconRes(info.batteryTemperatureCelsius)))
+                row(
+                    DeviceInfoUiShared.rowTitle(ctx, key),
+                    String.format("%.1f °C", info.batteryTemperatureCelsius),
+                    icon(DeviceInfoUiShared.temperatureIconRes(info.batteryTemperatureCelsius))
+                )
             DeviceInfoUiShared.Row.CURRENT ->
-                row(key, DeviceInfoUiShared.currentText(info.currentNowMicroA), icon(R.drawable.ic_row_current))
+                row(
+                    DeviceInfoUiShared.rowTitle(ctx, key),
+                    DeviceInfoUiShared.currentText(info.currentNowMicroA),
+                    icon(R.drawable.ic_row_current)
+                )
+            DeviceInfoUiShared.Row.POWER ->
+                row(
+                    DeviceInfoUiShared.rowTitle(ctx, key),
+                    DeviceInfoUiShared.instantPowerText(info.batteryVoltageV, info.currentNowMicroA),
+                    icon(R.drawable.ic_row_current)
+                )
             DeviceInfoUiShared.Row.RAM ->
-                row(key, info.ramSummary, icon(R.drawable.ic_row_memory))
+                row(
+                    DeviceInfoUiShared.rowTitle(ctx, key),
+                    info.ramSummary,
+                    icon(R.drawable.ic_row_memory)
+                )
             else ->
-                row(key, "—", icon(R.drawable.ic_row_unknown))
+                row("—", "—", icon(R.drawable.ic_row_unknown))
         }
 
         val refreshIcon = icon(R.drawable.ic_row_refresh)
@@ -61,7 +91,7 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
                 if (now - lastRefreshTimeMs < MIN_REFRESH_INTERVAL_MS) {
                     CarToast.makeText(
                         carContext,
-                        "Please wait before refreshing again",
+                        ctx.getString(R.string.car_toast_refresh_wait),
                         CarToast.LENGTH_SHORT
                     ).show()
                     return@setOnClickListener
@@ -70,7 +100,7 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
                 invalidate()
                 CarToast.makeText(
                     carContext,
-                    "Refreshing device info…",
+                    ctx.getString(R.string.car_toast_refreshing),
                     CarToast.LENGTH_SHORT
                 ).show()
             }
@@ -81,7 +111,7 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
             .build()
 
         return ListTemplate.Builder()
-            .setTitle("Device information")
+            .setTitle(ctx.getString(R.string.app_name))
             .setActionStrip(actionStrip)
             .apply {
                 val autoSchema = listOf(
@@ -90,13 +120,15 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
                         DeviceInfoUiShared.Row.PLUGGED,
                         DeviceInfoUiShared.Row.HEALTH,
                         DeviceInfoUiShared.Row.TEMPERATURE,
-                        DeviceInfoUiShared.Row.CURRENT
+                        DeviceInfoUiShared.Row.CURRENT,
+                        DeviceInfoUiShared.Row.POWER
                     ),
                     DeviceInfoUiShared.Section.RAM to listOf(
                         DeviceInfoUiShared.Row.RAM
                     )
                 )
-                autoSchema.forEach { (sectionTitle, rows) ->
+                autoSchema.forEach { (sectionKey, rows) ->
+                    val sectionTitle = DeviceInfoUiShared.sectionTitle(ctx, sectionKey)
                     val list = ItemList.Builder().apply {
                         rows.forEach { addItem(rowForKey(it)) }
                     }.build()

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.DeviceInfoAuto" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/night_window</item>
+        <item name="android:colorBackground">@color/night_window</item>
+        <item name="colorPrimary">@color/night_primary</item>
+        <item name="colorPrimaryDark">@color/night_primary_dark</item>
+        <item name="colorAccent">@color/night_accent</item>
+        <item name="android:textColorPrimary">@color/night_text_primary</item>
+        <item name="android:textColorSecondary">@color/night_text_secondary</item>
+        <item name="android:textColorHint">@color/night_text_hint</item>
+        <item name="colorBackgroundFloating">@color/night_panel</item>
+    </style>
+</resources>

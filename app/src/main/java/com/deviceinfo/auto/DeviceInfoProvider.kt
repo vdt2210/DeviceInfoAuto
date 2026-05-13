@@ -28,6 +28,7 @@ import android.opengl.GLES20
 import android.os.StatFs
 import android.provider.Settings
 import java.io.File
+import java.util.Locale
 
 data class DeviceInfo(
     val batteryLevel: Int,
@@ -261,7 +262,7 @@ object DeviceInfoProvider {
                 val caps = active?.let { connectivity.getNetworkCapabilities(it) }
                 if (caps != null) {
                     connectionType = when {
-                        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi‑Fi"
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
                         caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Cellular"
                         caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
                         caps.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> "Bluetooth"
@@ -331,8 +332,8 @@ object DeviceInfoProvider {
         val ramTotalGB = memInfo.totalMem / (1024.0 * 1024.0 * 1024.0)
         val ramAvailGB = memInfo.availMem / (1024.0 * 1024.0 * 1024.0)
 
-        val storageSummary = formatFreeOf(freeGB, totalGB)
-        val ramSummary = formatFreeOf(ramAvailGB, ramTotalGB)
+        val storageSummary = formatFreeOf(context, freeGB, totalGB)
+        val ramSummary = formatFreeOf(context, ramAvailGB, ramTotalGB)
 
         val deviceName = resolveUserDeviceName(context)
         val deviceCodename = Build.DEVICE.ifEmpty { "—" }
@@ -522,14 +523,14 @@ object DeviceInfoProvider {
 
     private fun formatSize(gb: Double): String =
         when {
-            gb >= 0.1 -> String.format("%.1f GB", gb)
-            gb >= 1.0 / 1024 -> String.format("%.0f MB", gb * 1024)
-            gb >= 1.0 / (1024 * 1024) -> String.format("%.0f KB", gb * 1024 * 1024)
-            else -> String.format("%.0f B", gb * 1024 * 1024 * 1024)
+            gb >= 0.1 -> String.format(Locale.US, "%.1f GB", gb)
+            gb >= 1.0 / 1024 -> String.format(Locale.US, "%.0f MB", gb * 1024)
+            gb >= 1.0 / (1024 * 1024) -> String.format(Locale.US, "%.0f KB", gb * 1024 * 1024)
+            else -> String.format(Locale.US, "%.0f B", gb * 1024 * 1024 * 1024)
         }
 
-    private fun formatFreeOf(freeGb: Double, totalGb: Double): String =
-        "${formatSize(freeGb)} free of ${formatSize(totalGb)}"
+    private fun formatFreeOf(context: Context, freeGb: Double, totalGb: Double): String =
+        context.getString(R.string.storage_free_of, formatSize(freeGb), formatSize(totalGb))
 
     /**
      * Official [BatteryManager.EXTRA_CYCLE_COUNT] exists from API 34.
