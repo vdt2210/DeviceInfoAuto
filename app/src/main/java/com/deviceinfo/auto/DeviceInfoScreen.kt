@@ -1,8 +1,10 @@
 package com.deviceinfo.auto
 
+import android.content.Context
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
 import androidx.car.app.CarContext
-import androidx.car.app.CarToast
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.ActionStrip
@@ -13,15 +15,68 @@ import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.SectionedItemList
 import androidx.car.app.model.Template
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 
+/**
+ * Android Auto: battery + RAM. Live values refresh on a fixed poll only (no battery
+ * broadcasts) so the host is not rebuilding [ListTemplate] continuously while scrolling.
+ */
 class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
 
-    private var lastRefreshTimeMs: Long = 0L
+    private val appCtx: Context = carContext.applicationContext
+    private val mainExecutor = ContextCompat.getMainExecutor(carContext)
+    private val handler = Handler(Looper.getMainLooper())
+
+    /** Last displayed telemetry; skip [invalidate] when poll sees no change. */
+    private var lastTelemetrySnapshot: String? = null
+
+    private val telemetryPollRunnable = object : Runnable {
+        override fun run() {
+            val info = DeviceInfoProvider.get(appCtx)
+            val snapshot = telemetrySnapshot(info)
+            if (snapshot != lastTelemetrySnapshot) {
+                lastTelemetrySnapshot = snapshot
+                invalidate()
+            }
+            handler.postDelayed(this, DeviceInfoUiShared.CAR_TELEMETRY_POLL_INTERVAL_MS)
+        }
+    }
+
+    private val updatesObserver = object : DefaultLifecycleObserver {
+        override fun onStart(owner: LifecycleOwner) {
+            handler.removeCallbacks(telemetryPollRunnable)
+            handler.post(telemetryPollRunnable)
+        }
+
+        override fun onStop(owner: LifecycleOwner) {
+            handler.removeCallbacks(telemetryPollRunnable)
+            lastTelemetrySnapshot = null
+        }
+    }
+
+    init {
+        lifecycle.addObserver(updatesObserver)
+    }
+
+    /** Stable key of all dynamic row bodies (pin, dòng, công suất, RAM, …). */
+    private fun telemetrySnapshot(info: DeviceInfo): String = buildString {
+        append(info.batteryLevel).append('|')
+        append(info.isPowerSaveMode).append('|')
+        append(info.plugged).append('|')
+        append(info.health).append('|')
+        append(info.batteryTemperatureCelsius).append('|')
+        append(info.currentNowMicroA).append('|')
+        append(info.batteryVoltageV).append('|')
+        append(info.ramSummary)
+    }
 
     override fun onGetTemplate(): Template {
-        val info = DeviceInfoProvider.get(carContext.applicationContext)
-        val ctx = carContext
+        val info = DeviceInfoProvider.get(appCtx)
+        lastTelemetrySnapshot = telemetrySnapshot(info)
+        val ctx = AppPreferences.localizedContext(carContext)
         fun icon(resId: Int): CarIcon {
             val white = Color.WHITE
             val tint = CarColor.createCustom(white, white)
@@ -40,7 +95,7 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
             DeviceInfoUiShared.Row.LEVEL ->
                 row(
                     DeviceInfoUiShared.rowTitle(ctx, key),
-                    DeviceInfoUiShared.levelText(ctx, info),
+                    DeviceInfoUiShared.levelText(ctx, info, DeviceInfoUiShared.DisplaySurface.CAR),
                     icon(DeviceInfoUiShared.levelIconRes(info.batteryLevel, info.isPowerSaveMode))
                 )
             DeviceInfoUiShared.Row.PLUGGED ->
@@ -58,7 +113,7 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
             DeviceInfoUiShared.Row.TEMPERATURE ->
                 row(
                     DeviceInfoUiShared.rowTitle(ctx, key),
-                    String.format("%.1f °C", info.batteryTemperatureCelsius),
+                    DeviceInfoUiShared.temperatureText(info.batteryTemperatureCelsius),
                     icon(DeviceInfoUiShared.temperatureIconRes(info.batteryTemperatureCelsius))
                 )
             DeviceInfoUiShared.Row.CURRENT ->
@@ -80,29 +135,19 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
                     icon(R.drawable.ic_row_memory)
                 )
             else ->
-                row("—", "—", icon(R.drawable.ic_row_unknown))
+                row(
+                    "—",
+                    DeviceInfoUiShared.valueNotAvailableLabel(ctx),
+                    icon(R.drawable.ic_row_unknown)
+                )
         }
 
         val refreshIcon = icon(R.drawable.ic_row_refresh)
         val refreshAction = Action.Builder()
             .setIcon(refreshIcon)
             .setOnClickListener {
-                val now = System.currentTimeMillis()
-                if (now - lastRefreshTimeMs < MIN_REFRESH_INTERVAL_MS) {
-                    CarToast.makeText(
-                        carContext,
-                        ctx.getString(R.string.car_toast_refresh_wait),
-                        CarToast.LENGTH_SHORT
-                    ).show()
-                    return@setOnClickListener
-                }
-                lastRefreshTimeMs = now
-                invalidate()
-                CarToast.makeText(
-                    carContext,
-                    ctx.getString(R.string.car_toast_refreshing),
-                    CarToast.LENGTH_SHORT
-                ).show()
+                lastTelemetrySnapshot = null
+                mainExecutor.execute { invalidate() }
             }
             .build()
 
@@ -115,17 +160,17 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
             .setActionStrip(actionStrip)
             .apply {
                 val autoSchema = listOf(
-                    DeviceInfoUiShared.Section.BATTERY to listOf(
-                        DeviceInfoUiShared.Row.LEVEL,
-                        DeviceInfoUiShared.Row.PLUGGED,
-                        DeviceInfoUiShared.Row.HEALTH,
-                        DeviceInfoUiShared.Row.TEMPERATURE,
-                        DeviceInfoUiShared.Row.CURRENT,
-                        DeviceInfoUiShared.Row.POWER
-                    ),
+                    DeviceInfoUiShared.Section.BATTERY to buildList {
+                        add(DeviceInfoUiShared.Row.LEVEL)
+                        add(DeviceInfoUiShared.Row.PLUGGED)
+                        add(DeviceInfoUiShared.Row.HEALTH)
+                        add(DeviceInfoUiShared.Row.TEMPERATURE)
+                        add(DeviceInfoUiShared.Row.CURRENT)
+                        add(DeviceInfoUiShared.Row.POWER)
+                    },
                     DeviceInfoUiShared.Section.RAM to listOf(
                         DeviceInfoUiShared.Row.RAM
-                    )
+                    ),
                 )
                 autoSchema.forEach { (sectionKey, rows) ->
                     val sectionTitle = DeviceInfoUiShared.sectionTitle(ctx, sectionKey)
@@ -136,9 +181,5 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
                 }
             }
             .build()
-    }
-
-    companion object {
-        private const val MIN_REFRESH_INTERVAL_MS = 3_000L
     }
 }

@@ -7,11 +7,26 @@
 
     <string name="settings_title">Settings</string>
     <string name="settings_section_language">Language</string>
+    <string name="settings_language_hint">Select a language from the list.</string>
+    <string name="settings_save">Save</string>
     <string name="settings_section_appearance">Appearance</string>
-    <string name="theme_system">System default</string>
-    <string name="theme_light">Light</string>
-    <string name="theme_dark">Dark</string>
-    <string name="language_system">System default</string>
+    <string name="settings_appearance_hint">Follow your device, or pin the app to always light or always dark.</string>
+    <string name="settings_unsaved_title">Discard changes?</string>
+    <string name="settings_unsaved_message">You have unsaved changes. Leave without saving?</string>
+    <string name="settings_unsaved_discard">Discard</string>
+    <string name="settings_unsaved_keep">Keep editing</string>
+    <string name="settings_section_permissions">Permissions</string>
+    <string name="settings_permissions_hint">Grant or review permissions in system settings.</string>
+    <string name="settings_action_app_settings">Open app info</string>
+    <string name="settings_section_reset">Restore default settings</string>
+    <string name="settings_reset_summary">Restores all app settings to defaults. Your other app data is not affected.</string>
+    <string name="settings_reset_button">Restore</string>
+    <string name="settings_reset_confirm_title">Restore default settings?</string>
+    <string name="settings_reset_confirm_message">This action cannot be undone. Please confirm.</string>
+    <string name="settings_reset_confirm_yes">Restore</string>
+    <string name="theme_system">Match system</string>
+    <string name="theme_light">Always light</string>
+    <string name="theme_dark">Always dark</string>
 
     <string name="app_info_title">About app</string>
     <string name="about_section_overview">Overview</string>
@@ -24,6 +39,7 @@
     <string name="about_copyright">© %1$d - Created by %2$s</string>
 
     <string name="storage_free_of">%1$s free of %2$s</string>
+    <string name="storage_volume_fallback_title">External storage</string>
 
     <string name="sim_state_ready">Ready</string>
     <string name="sim_state_absent">Absent</string>
@@ -34,7 +50,7 @@
     <string name="sim_state_perm_disabled">Disabled</string>
     <string name="sim_state_loaded">Loaded</string>
 
-    <string name="sim_kind_physical">Physical</string>
+    <string name="sim_kind_physical">Physical SIM</string>
 
     <string name="word_unknown">Unknown</string>
 
@@ -44,6 +60,26 @@
     <string name="section_network">Network</string>
     <string name="section_device">Device</string>
     <string name="section_processor">Processor</string>
+    <string name="section_hardware">Hardware</string>
+    <string name="section_sensors">Sensors</string>
+
+    <string name="not_available">Not available</string>
+    <string name="sensor_proximity_near">Near</string>
+    <string name="sensor_proximity_far">Far</string>
+    <string name="sensor_row_accelerometer">Accelerometer (m/s²)</string>
+    <string name="sensor_row_gyroscope">Gyroscope (rad/s)</string>
+    <string name="sensor_row_magnetic_field">Magnetometer (µT)</string>
+    <string name="sensor_row_light">Ambient light</string>
+    <string name="sensor_row_pressure">Atmospheric pressure</string>
+    <string name="sensor_row_humidity">Relative humidity</string>
+    <string name="sensor_row_ambient_temperature">Ambient temperature</string>
+    <string name="sensor_row_proximity">Proximity</string>
+    <string name="sensor_row_hinge_angle">Hinge angle</string>
+    <string name="display_rotation_0">Portrait (0°)</string>
+    <string name="display_rotation_90">Landscape (90°)</string>
+    <string name="display_rotation_180">Reverse portrait (180°)</string>
+    <string name="display_rotation_270">Reverse landscape (270°)</string>
+    <string name="display_rotation_unknown">Rotation %1$d</string>
 
     <string name="row_level">Level</string>
     <string name="row_plugged">Plugged</string>
@@ -55,10 +91,32 @@
     <string name="row_power">Power</string>
     <string name="row_charge_counter">Charge counter</string>
     <string name="row_cycle_count">Cycle count</string>
+    <string name="row_battery_design_capacity">Design capacity</string>
+    <string name="row_battery_health_percent">Battery health</string>
+    <string name="row_charge_time_remaining">Time to full</string>
+    <string name="charge_time_hours_minutes">%1$d h %2$d min</string>
+    <string name="charge_time_hours_only">%1$d h</string>
+    <string name="charge_time_minutes_only">%1$d min</string>
+    <string name="row_adaptive_charging">Adaptive charging</string>
+    <string name="adaptive_charging_off">Off</string>
+    <string name="adaptive_charging_on">On</string>
+    <string name="adaptive_charging_active">Active (adaptive policy)</string>
+    <string name="adaptive_charging_standard">Standard</string>
+    <string name="row_display_diagonal">Screen size</string>
     <string name="row_resolution">Resolution</string>
     <string name="row_density">Density</string>
     <string name="row_refresh_rate">Refresh rate</string>
-    <string name="row_storage">Storage</string>
+    <string name="row_refresh_modes">Refresh modes</string>
+    <string name="row_hdr">HDR</string>
+    <string name="row_display_orientation">Screen orientation</string>
+    <string name="hdr_no">No</string>
+    <string name="hdr_yes">Yes</string>
+    <string name="hdr_type_dolby_vision">Dolby Vision</string>
+    <string name="hdr_type_hdr10">HDR10</string>
+    <string name="hdr_type_hlg">HLG</string>
+    <string name="hdr_type_hdr10_plus">HDR10+</string>
+    <string name="hdr_type_other">HDR (type %1$d)</string>
+    <string name="row_storage">Internal storage</string>
     <string name="row_connection">Connection</string>
     <string name="network_cellular">Cellular</string>
     <string name="row_cellular">@string/network_cellular</string>
@@ -69,6 +127,18 @@
     <string name="row_metered">Metered</string>
     <string name="row_roaming">Roaming</string>
     <string name="row_bandwidth">Bandwidth</string>
+    <string name="row_internet_validated">Internet available</string>
+    <string name="row_captive_portal">Captive portal</string>
+    <string name="row_multi_network">Multi-network</string>
+    <string name="row_wifi_bands">Wi‑Fi bands</string>
+    <string name="row_wifi_link_speed">Wi‑Fi link speed</string>
+    <string name="row_wifi_signal">Wi‑Fi signal</string>
+    <string name="row_cellular_signal">Cellular signal</string>
+    <string name="network_wifi_short">Wi‑Fi</string>
+    <string name="multi_network_none">No</string>
+    <string name="network_via_wifi">via Wi‑Fi</string>
+    <string name="network_via_cellular">via mobile</string>
+    <string name="network_via_ethernet">via Ethernet</string>
     <string name="row_device_name">Device name</string>
     <string name="row_model">Model</string>
     <string name="row_manufacturer">Manufacturer</string>
@@ -78,6 +148,41 @@
     <string name="row_build">Build</string>
     <string name="row_cpu_freq">CPU frequency</string>
     <string name="row_cpu_freq_current">Current CPU frequency</string>
+
+    <string name="row_hw_camera">Cameras</string>
+    <string name="row_hw_nfc">NFC</string>
+    <string name="row_hw_usb">USB</string>
+    <string name="row_hw_audio">Audio</string>
+    <string name="row_hw_biometric">Biometrics</string>
+    <string name="row_hw_thermal">Thermal</string>
+    <string name="nfc_not_supported">Not supported</string>
+    <string name="hw_camera_rear">Rear</string>
+    <string name="hw_camera_front">Front</string>
+    <string name="hw_camera_mp_value">%1$d MP</string>
+    <string name="hw_camera_resolution">%1$d×%2$d</string>
+    <string name="hw_camera_aperture">f/%1$.1f</string>
+    <string name="hw_camera_focal_mm">%1$.0f mm</string>
+    <string name="hw_camera_ois">OIS</string>
+    <string name="hw_camera_external">External</string>
+    <string name="hw_camera_other">Camera</string>
+    <string name="hw_usb_host">USB host</string>
+    <string name="hw_usb_accessory">USB accessory</string>
+    <string name="hw_usb_type_c">USB‑C</string>
+    <string name="hw_usb_devices_attached">%1$d device(s) connected</string>
+    <string name="hw_audio_output">Speaker output</string>
+    <string name="hw_audio_microphone">Microphone</string>
+    <string name="hw_audio_pro">Pro audio</string>
+    <string name="hw_audio_low_latency">Low-latency audio</string>
+    <string name="hw_bio_fingerprint">Fingerprint</string>
+    <string name="hw_bio_face">Face</string>
+    <string name="hw_bio_iris">Iris</string>
+    <string name="thermal_status_none">Normal</string>
+    <string name="thermal_status_light">Light throttling</string>
+    <string name="thermal_status_moderate">Moderate throttling</string>
+    <string name="thermal_status_severe">Severe throttling</string>
+    <string name="thermal_status_critical">Critical</string>
+    <string name="thermal_status_emergency">Emergency</string>
+    <string name="thermal_status_shutdown">Shutdown imminent</string>
 
     <string name="battery_status_charging">Charging</string>
     <string name="battery_status_discharging">Discharging</string>
@@ -107,7 +212,4 @@
     <string name="value_no">No</string>
     <string name="value_on">On</string>
     <string name="value_off">Off</string>
-
-    <string name="car_toast_refresh_wait">Please wait before refreshing again</string>
-    <string name="car_toast_refreshing">Refreshing device info…</string>
 </resources>

@@ -10,5 +10,8 @@
         <item name="android:textColorSecondary">@color/light_text_secondary</item>
         <item name="android:textColorHint">@color/light_text_hint</item>
         <item name="colorBackgroundFloating">@color/light_panel</item>
+        <item name="colorDestructive">@color/color_danger</item>
+        <item name="colorDestructivePressed">@color/color_danger_pressed</item>
+        <item name="colorOnDestructive">@color/color_on_danger</item>
     </style>
 </resources>

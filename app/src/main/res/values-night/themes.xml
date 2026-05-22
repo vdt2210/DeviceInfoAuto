@@ -10,5 +10,8 @@
         <item name="android:textColorSecondary">@color/night_text_secondary</item>
         <item name="android:textColorHint">@color/night_text_hint</item>
         <item name="colorBackgroundFloating">@color/night_panel</item>
+        <item name="colorDestructive">@color/night_danger</item>
+        <item name="colorDestructivePressed">@color/night_danger_pressed</item>
+        <item name="colorOnDestructive">@color/night_on_danger</item>
     </style>
 </resources>

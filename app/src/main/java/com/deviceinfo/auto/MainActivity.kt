@@ -9,6 +9,10 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
@@ -23,6 +27,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
@@ -33,6 +38,7 @@ import androidx.core.content.ContextCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : AppCompatActivity() {
 
@@ -42,8 +48,35 @@ class MainActivity : AppCompatActivity() {
     private var swipeRefreshLayout: SwipeRefreshLayout? = null
     private var networkCallbackRegistered = false
 
+    private data class LatestSensorEvent(val values: FloatArray, val sensor: Sensor)
+
+    private val latestSensorEvents = ConcurrentHashMap<String, LatestSensorEvent>()
+    private val sensorStreamListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val key = SensorRowFormat.rowKeyForSensorType(event.sensor.type) ?: return
+            latestSensorEvents[key] = LatestSensorEvent(event.values.clone(), event.sensor)
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
+    private val sensorUiRefreshRunnable = object : Runnable {
+        override fun run() {
+            applySensorRowUpdatesFromLatestEvents()
+            handler.postDelayed(this, SENSOR_UI_REFRESH_INTERVAL_MS)
+        }
+    }
+
     /** Snapshot from [onPause]; used to detect language/theme changes after returning from Settings. */
     private var configSnapshotAtPause: Pair<String, AppPreferences.ThemeMode>? = null
+
+    /** Match [DeviceInfo.simDetailRowsVisible]; rebuild when phone-state permission toggles the block. */
+    private var listSimDetailRowsVisible: Boolean = false
+
+    /** Row keys for [DeviceInfo.externalStorageVolumes]; rebuild list when mount set changes. */
+    private var listExternalVolumeRowKeys: List<String> = emptyList()
+
+    /** Tracks Wi‑Fi row block + SIM block for network section rebuild. */
+    private var listNetworkSchemaSignature: Pair<Boolean, Boolean> = false to false
 
     private lateinit var sensitivePermissionLauncher: ActivityResultLauncher<Array<String>>
 
@@ -56,6 +89,7 @@ class MainActivity : AppCompatActivity() {
             showDeviceInfoList(info)
         }
         super.onCreate(savedInstanceState)
+        DeviceInfoProvider.invalidateHardwareCache()
         applyTransparentSystemBars()
         setContentView(R.layout.activity_main)
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
@@ -67,6 +101,7 @@ class MainActivity : AppCompatActivity() {
             setProgressBackgroundColorSchemeColor(obtainStyledColor(android.R.attr.colorBackground))
 
             setOnRefreshListener {
+                DeviceInfoProvider.invalidateHardwareCache()
                 val info = DeviceInfoProvider.get(this@MainActivity)
                 adapter = null
                 showDeviceInfoList(info)
@@ -149,17 +184,22 @@ class MainActivity : AppCompatActivity() {
                 updateBattery = true,
                 updateMemory = true,
                 updateProcessor = true,
-                updateNetwork = true
+                updateNetwork = true,
+                updateDisplay = true,
             )
         }
         registerBatteryReceiver()
         registerNetworkCallback()
+        registerStreamSensors()
+        startSensorUiRefresh()
         handler.post(memoryRefreshRunnable)
     }
 
     override fun onPause() {
         window.decorView.removeCallbacks(resumeAfterVisibleRunnable)
         handler.removeCallbacks(memoryRefreshRunnable)
+        stopSensorUiRefresh()
+        unregisterStreamSensors()
         runCatching { unregisterReceiver(batteryReceiver) }
         unregisterNetworkCallback()
         AppPreferences(this).let { configSnapshotAtPause = it.getLanguageTag() to it.getThemeMode() }
@@ -175,18 +215,31 @@ class MainActivity : AppCompatActivity() {
 
         if (adapter == null) {
             // Build static + initial dynamic content once
+            unregisterStreamSensors()
             items.clear()
+            seedSensorRowPlaceholders()
 
-            fun mkRow(key: String, value: String, icon: Int) = InfoItem.Row(
+            fun mkRow(key: String, value: CharSequence, icon: Int) = InfoItem.Row(
                 key,
                 DeviceInfoUiShared.rowTitle(this@MainActivity, key),
                 value,
                 icon
             )
 
+            fun mkStorageVolumeRow(vol: ExternalStorageVolumeInfo) = InfoItem.Row(
+                vol.rowKey,
+                vol.title,
+                vol.summary,
+                R.drawable.ic_row_storage,
+            )
+
             fun rowForKey(key: String): InfoItem.Row = when (key) {
                 DeviceInfoUiShared.Row.LEVEL ->
-                    mkRow(key, DeviceInfoUiShared.levelText(this@MainActivity, info), DeviceInfoUiShared.levelIconRes(info.batteryLevel, info.isPowerSaveMode))
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.levelText(this@MainActivity, info, DeviceInfoUiShared.DisplaySurface.PHONE),
+                        DeviceInfoUiShared.levelIconRes(info.batteryLevel, info.isPowerSaveMode),
+                    )
                 DeviceInfoUiShared.Row.PLUGGED ->
                     mkRow(key, DeviceInfoUiShared.pluggedLabel(this@MainActivity, info.plugged), DeviceInfoUiShared.pluggedIconRes(info.plugged))
                 DeviceInfoUiShared.Row.HEALTH ->
@@ -194,7 +247,7 @@ class MainActivity : AppCompatActivity() {
                 DeviceInfoUiShared.Row.TECHNOLOGY ->
                     mkRow(key, DeviceInfoUiShared.technologyLabel(this@MainActivity, info.technology), R.drawable.ic_row_battery_full)
                 DeviceInfoUiShared.Row.TEMPERATURE ->
-                    mkRow(key, String.format("%.1f °C", info.batteryTemperatureCelsius), DeviceInfoUiShared.temperatureIconRes(info.batteryTemperatureCelsius))
+                    mkRow(key, DeviceInfoUiShared.temperatureText(info.batteryTemperatureCelsius), DeviceInfoUiShared.temperatureIconRes(info.batteryTemperatureCelsius))
                 DeviceInfoUiShared.Row.VOLTAGE ->
                     mkRow(key, String.format("%.2f V", info.batteryVoltageV), R.drawable.ic_row_voltage)
                 DeviceInfoUiShared.Row.CURRENT ->
@@ -208,21 +261,111 @@ class MainActivity : AppCompatActivity() {
                 DeviceInfoUiShared.Row.CHARGE_COUNTER ->
                     mkRow(key, DeviceInfoUiShared.chargeCounterText(info.chargeCounterMicroAh), R.drawable.ic_row_charge_counter)
                 DeviceInfoUiShared.Row.CYCLE_COUNT ->
-                    mkRow(key, DeviceInfoUiShared.cycleCountText(info.cycleCount), R.drawable.ic_row_cycle_count)
+                    mkRow(key, DeviceInfoUiShared.cycleCountText(this@MainActivity, info.cycleCount), R.drawable.ic_row_cycle_count)
+                DeviceInfoUiShared.Row.BATTERY_DESIGN_CAPACITY ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.batteryDesignCapacityText(this@MainActivity, info.batteryDesignCapacityMicroAh),
+                        R.drawable.ic_row_battery_full,
+                    )
+                DeviceInfoUiShared.Row.BATTERY_HEALTH_PERCENT ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.batteryHealthPercentText(this@MainActivity, info.batteryHealthPercent),
+                        R.drawable.ic_row_health,
+                    )
+                DeviceInfoUiShared.Row.CHARGE_TIME_REMAINING ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.chargeTimeRemainingText(this@MainActivity, info.chargeTimeRemainingMs),
+                        R.drawable.ic_row_plugged,
+                    )
+                DeviceInfoUiShared.Row.ADAPTIVE_CHARGING ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.adaptiveChargingText(this@MainActivity, info.adaptiveChargingState),
+                        R.drawable.ic_row_health
+                    )
                 DeviceInfoUiShared.Row.RESOLUTION ->
                     mkRow(key, DeviceInfoUiShared.resolutionDisplay(this@MainActivity, info.displayResolution), R.drawable.ic_row_model)
+                DeviceInfoUiShared.Row.DISPLAY_DIAGONAL ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.displayDiagonalText(this@MainActivity, info.displayDiagonalInches),
+                        R.drawable.ic_row_density,
+                    )
                 DeviceInfoUiShared.Row.DENSITY ->
                     mkRow(key, DeviceInfoUiShared.densityLabel(info.screenDensityDpi), R.drawable.ic_row_density)
                 DeviceInfoUiShared.Row.REFRESH_RATE ->
-                    mkRow(key, String.format("%.0f Hz", info.displayRefreshRateHz), R.drawable.ic_row_refresh_rate)
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.refreshRateDisplay(this@MainActivity, info.displayRefreshRateHz),
+                        R.drawable.ic_row_refresh_rate
+                    )
+                DeviceInfoUiShared.Row.REFRESH_RATE_MODES ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.displayRefreshModesText(this@MainActivity, info.displayRefreshModesSummary),
+                        R.drawable.ic_row_refresh_rate
+                    )
+                DeviceInfoUiShared.Row.HDR ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.displayHdrSummaryText(this@MainActivity, info.displayHdrSummary),
+                        R.drawable.ic_row_extension
+                    )
+                DeviceInfoUiShared.Row.DISPLAY_ROTATION ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.displayRotationLabel(this@MainActivity, currentDisplayRotationSurface()),
+                        R.drawable.ic_row_model
+                    )
                 DeviceInfoUiShared.Row.STORAGE ->
                     mkRow(key, info.storageSummary, R.drawable.ic_row_storage)
                 DeviceInfoUiShared.Row.RAM ->
                     mkRow(key, info.ramSummary, R.drawable.ic_row_memory)
                 DeviceInfoUiShared.Row.CONNECTION ->
                     mkRow(key, DeviceInfoUiShared.connectionLabel(this@MainActivity, info.connectionType), DeviceInfoUiShared.connectionIconRes(info.connectionType))
+                DeviceInfoUiShared.Row.INTERNET_VALIDATED ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.internetValidatedDisplay(
+                            this@MainActivity,
+                            info.internetValidated,
+                            info.connectionType,
+                        ),
+                        DeviceInfoUiShared.connectionIconRes(info.connectionType),
+                    )
+                DeviceInfoUiShared.Row.CAPTIVE_PORTAL ->
+                    mkRow(key, DeviceInfoUiShared.yesNoOptional(this@MainActivity, info.captivePortal), R.drawable.ic_row_wifi)
+                DeviceInfoUiShared.Row.MULTI_NETWORK ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.networkReadingOrNotAvailable(this@MainActivity, info.multiNetworkSummary),
+                        R.drawable.ic_row_wifi,
+                    )
+                DeviceInfoUiShared.Row.WIFI_BANDS ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.networkReadingOrNotAvailable(this@MainActivity, info.wifiSupportedBandsSummary),
+                        R.drawable.ic_row_wifi,
+                    )
+                DeviceInfoUiShared.Row.WIFI_LINK_SPEED ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.networkReadingOrNotAvailable(this@MainActivity, info.wifiLinkSpeedSummary),
+                        R.drawable.ic_row_wifi,
+                    )
+                DeviceInfoUiShared.Row.WIFI_SIGNAL ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.networkReadingOrNotAvailable(this@MainActivity, info.wifiSignalSummary),
+                        R.drawable.ic_row_wifi,
+                    )
                 DeviceInfoUiShared.Row.CELLULAR ->
                     mkRow(key, info.cellularType, R.drawable.ic_row_cell_tower)
+                DeviceInfoUiShared.Row.CELLULAR_SIGNAL ->
+                    mkRow(key, info.cellularSignalSummary, R.drawable.ic_row_cell_tower)
                 DeviceInfoUiShared.Row.CARRIER ->
                     mkRow(key, info.simCarrier, R.drawable.ic_row_sim_card)
                 DeviceInfoUiShared.Row.SIM_STATE ->
@@ -242,7 +385,12 @@ class MainActivity : AppCompatActivity() {
                 DeviceInfoUiShared.Row.BANDWIDTH ->
                     mkRow(
                         key,
-                        "${DeviceInfoUiShared.formatBandwidthKbps(info.downstreamKbps)} / ${DeviceInfoUiShared.formatBandwidthKbps(info.upstreamKbps)}",
+                        DeviceInfoUiShared.bandwidthDisplay(
+                            this@MainActivity,
+                            info.downstreamKbps,
+                            info.upstreamKbps,
+                            DeviceInfoUiShared.DisplaySurface.PHONE,
+                        ),
                         R.drawable.ic_row_speed
                     )
                 DeviceInfoUiShared.Row.DEVICE_NAME ->
@@ -260,59 +408,174 @@ class MainActivity : AppCompatActivity() {
                 DeviceInfoUiShared.Row.BOOTLOADER ->
                     mkRow(key, DeviceInfoUiShared.unknownWord(this@MainActivity, info.bootloader), R.drawable.ic_row_bootloader)
                 DeviceInfoUiShared.Row.KERNEL ->
-                    mkRow(key, info.kernelVersion, R.drawable.ic_row_terminal)
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.sysfsReadingOrNotAvailable(this@MainActivity, info.kernelVersion),
+                        R.drawable.ic_row_terminal
+                    )
                 DeviceInfoUiShared.Row.BUILD ->
                     mkRow(key, DeviceInfoUiShared.unknownWord(this@MainActivity, info.buildId), R.drawable.ic_row_build)
                 DeviceInfoUiShared.Row.CPU ->
-                    mkRow(key, info.cpuInfo, R.drawable.ic_row_memory)
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.sysfsReadingOrNotAvailable(this@MainActivity, info.cpuInfo),
+                        R.drawable.ic_row_memory
+                    )
                 DeviceInfoUiShared.Row.CPU_FREQ ->
-                    mkRow(key, info.cpuFreq, R.drawable.ic_row_speed)
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.sysfsReadingOrNotAvailable(this@MainActivity, info.cpuFreq),
+                        R.drawable.ic_row_speed
+                    )
                 DeviceInfoUiShared.Row.CPU_FREQ_CURRENT ->
-                    mkRow(key, info.cpuCurrentFreq, R.drawable.ic_row_speed)
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.sysfsReadingOrNotAvailable(this@MainActivity, info.cpuCurrentFreq),
+                        R.drawable.ic_row_speed
+                    )
                 DeviceInfoUiShared.Row.CPU_ABI ->
                     mkRow(key, info.cpuAbi, R.drawable.ic_row_architecture)
                 DeviceInfoUiShared.Row.GPU ->
-                    mkRow(key, info.gpuRenderer, R.drawable.ic_row_memory)
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.sysfsReadingOrNotAvailable(this@MainActivity, info.gpuRenderer),
+                        R.drawable.ic_row_memory
+                    )
                 DeviceInfoUiShared.Row.OPENGL_ES ->
-                    mkRow(key, info.gpuGlVersion, R.drawable.ic_row_extension)
-                else -> mkRow(key, "—", R.drawable.ic_row_unknown)
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.sysfsReadingOrNotAvailable(this@MainActivity, info.gpuGlVersion),
+                        R.drawable.ic_row_extension
+                    )
+                DeviceInfoUiShared.Row.HW_CAMERA ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.listSummaryForDisplay(
+                            this@MainActivity,
+                            info.cameraSummary,
+                            DeviceInfoUiShared.DisplaySurface.PHONE,
+                        ),
+                        R.drawable.ic_row_camera,
+                    )
+                DeviceInfoUiShared.Row.HW_NFC ->
+                    mkRow(key, info.nfcSummary, R.drawable.ic_row_nfc)
+                DeviceInfoUiShared.Row.HW_USB ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.listSummaryForDisplay(
+                            this@MainActivity,
+                            info.usbSummary,
+                            DeviceInfoUiShared.DisplaySurface.PHONE,
+                        ),
+                        R.drawable.ic_row_usb,
+                    )
+                DeviceInfoUiShared.Row.HW_AUDIO ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.listSummaryForDisplay(
+                            this@MainActivity,
+                            info.audioSummary,
+                            DeviceInfoUiShared.DisplaySurface.PHONE,
+                        ),
+                        R.drawable.ic_row_speaker,
+                    )
+                DeviceInfoUiShared.Row.HW_BIOMETRIC ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.listSummaryForDisplay(
+                            this@MainActivity,
+                            info.biometricSummary,
+                            DeviceInfoUiShared.DisplaySurface.PHONE,
+                        ),
+                        R.drawable.ic_row_fingerprint,
+                    )
+                DeviceInfoUiShared.Row.HW_THERMAL ->
+                    mkRow(
+                        key,
+                        DeviceInfoUiShared.compoundSummaryForDisplay(
+                            this@MainActivity,
+                            info.thermalSummary,
+                            DeviceInfoUiShared.DisplaySurface.PHONE,
+                        ),
+                        DeviceInfoUiShared.thermalIconRes(info.thermalSummary),
+                    )
+                DeviceInfoUiShared.Row.SENSOR_ACCELEROMETER,
+                DeviceInfoUiShared.Row.SENSOR_GYROSCOPE,
+                DeviceInfoUiShared.Row.SENSOR_MAGNETIC_FIELD,
+                DeviceInfoUiShared.Row.SENSOR_LIGHT,
+                DeviceInfoUiShared.Row.SENSOR_PROXIMITY,
+                DeviceInfoUiShared.Row.SENSOR_PRESSURE,
+                DeviceInfoUiShared.Row.SENSOR_HUMIDITY,
+                DeviceInfoUiShared.Row.SENSOR_AMBIENT_TEMPERATURE,
+                DeviceInfoUiShared.Row.SENSOR_HINGE_ANGLE,
+                ->
+                    mkRow(
+                        key,
+                        sensorRowValueForUi(key, sensorDisplayForRow(key)),
+                        R.drawable.ic_row_sensor
+                    )
+                else -> {
+                    val vol = info.externalStorageVolumes.find { it.rowKey == key }
+                    if (vol != null) mkStorageVolumeRow(vol)
+                    else mkRow(key, notAvailableText(), R.drawable.ic_row_unknown)
+                }
             }
 
             val phoneSchema = listOf(
-                DeviceInfoUiShared.Section.BATTERY to listOf(
-                    DeviceInfoUiShared.Row.LEVEL,
-                    DeviceInfoUiShared.Row.PLUGGED,
-                    DeviceInfoUiShared.Row.HEALTH,
-                    DeviceInfoUiShared.Row.TEMPERATURE,
-                    DeviceInfoUiShared.Row.VOLTAGE,
-                    DeviceInfoUiShared.Row.CURRENT,
-                    DeviceInfoUiShared.Row.POWER,
-                    DeviceInfoUiShared.Row.CHARGE_COUNTER,
-                    DeviceInfoUiShared.Row.CYCLE_COUNT,
-                    DeviceInfoUiShared.Row.TECHNOLOGY
-                ),
+                DeviceInfoUiShared.Section.BATTERY to buildList {
+                    add(DeviceInfoUiShared.Row.LEVEL)
+                    add(DeviceInfoUiShared.Row.PLUGGED)
+                    add(DeviceInfoUiShared.Row.HEALTH)
+                    add(DeviceInfoUiShared.Row.TEMPERATURE)
+                    add(DeviceInfoUiShared.Row.VOLTAGE)
+                    add(DeviceInfoUiShared.Row.CURRENT)
+                    add(DeviceInfoUiShared.Row.POWER)
+                    add(DeviceInfoUiShared.Row.CHARGE_COUNTER)
+                    add(DeviceInfoUiShared.Row.CYCLE_COUNT)
+                    add(DeviceInfoUiShared.Row.BATTERY_DESIGN_CAPACITY)
+                    add(DeviceInfoUiShared.Row.BATTERY_HEALTH_PERCENT)
+                    add(DeviceInfoUiShared.Row.CHARGE_TIME_REMAINING)
+                    add(DeviceInfoUiShared.Row.ADAPTIVE_CHARGING)
+                    add(DeviceInfoUiShared.Row.TECHNOLOGY)
+                },
                 DeviceInfoUiShared.Section.DISPLAY to listOf(
                     DeviceInfoUiShared.Row.RESOLUTION,
+                    DeviceInfoUiShared.Row.DISPLAY_DIAGONAL,
                     DeviceInfoUiShared.Row.DENSITY,
-                    DeviceInfoUiShared.Row.REFRESH_RATE
+                    DeviceInfoUiShared.Row.REFRESH_RATE,
+                    DeviceInfoUiShared.Row.REFRESH_RATE_MODES,
+                    DeviceInfoUiShared.Row.HDR,
+                    DeviceInfoUiShared.Row.DISPLAY_ROTATION,
                 ),
-                DeviceInfoUiShared.Section.STORAGE_MEMORY to listOf(
-                    DeviceInfoUiShared.Row.STORAGE,
-                    DeviceInfoUiShared.Row.RAM
-                ),
-                DeviceInfoUiShared.Section.NETWORK to listOf(
-                    DeviceInfoUiShared.Row.CONNECTION,
-                    DeviceInfoUiShared.Row.CELLULAR,
-                    DeviceInfoUiShared.Row.CARRIER,
-                    DeviceInfoUiShared.Row.SIM_STATE,
-                    DeviceInfoUiShared.Row.SIM_COUNTRY,
-                    DeviceInfoUiShared.Row.SIM_TYPE,
-                    DeviceInfoUiShared.Row.BLUETOOTH,
-                    DeviceInfoUiShared.Row.VPN,
-                    DeviceInfoUiShared.Row.METERED,
-                    DeviceInfoUiShared.Row.ROAMING,
-                    DeviceInfoUiShared.Row.BANDWIDTH
-                ),
+                DeviceInfoUiShared.Section.STORAGE_MEMORY to buildList {
+                    add(DeviceInfoUiShared.Row.STORAGE)
+                    info.externalStorageVolumes.forEach { add(it.rowKey) }
+                    add(DeviceInfoUiShared.Row.RAM)
+                },
+                DeviceInfoUiShared.Section.NETWORK to buildList {
+                    add(DeviceInfoUiShared.Row.CONNECTION)
+                    add(DeviceInfoUiShared.Row.INTERNET_VALIDATED)
+                    add(DeviceInfoUiShared.Row.CAPTIVE_PORTAL)
+                    add(DeviceInfoUiShared.Row.MULTI_NETWORK)
+                    if (info.wifiNetworkRowsVisible) {
+                        add(DeviceInfoUiShared.Row.WIFI_BANDS)
+                        add(DeviceInfoUiShared.Row.WIFI_LINK_SPEED)
+                        add(DeviceInfoUiShared.Row.WIFI_SIGNAL)
+                    }
+                    if (info.simDetailRowsVisible) {
+                        add(DeviceInfoUiShared.Row.CELLULAR)
+                        add(DeviceInfoUiShared.Row.CELLULAR_SIGNAL)
+                        add(DeviceInfoUiShared.Row.CARRIER)
+                        add(DeviceInfoUiShared.Row.SIM_STATE)
+                        add(DeviceInfoUiShared.Row.SIM_COUNTRY)
+                        add(DeviceInfoUiShared.Row.SIM_TYPE)
+                    }
+                    add(DeviceInfoUiShared.Row.BLUETOOTH)
+                    add(DeviceInfoUiShared.Row.VPN)
+                    add(DeviceInfoUiShared.Row.METERED)
+                    add(DeviceInfoUiShared.Row.ROAMING)
+                    add(DeviceInfoUiShared.Row.BANDWIDTH)
+                },
                 DeviceInfoUiShared.Section.DEVICE to listOf(
                     DeviceInfoUiShared.Row.DEVICE_NAME,
                     DeviceInfoUiShared.Row.MODEL,
@@ -331,19 +594,50 @@ class MainActivity : AppCompatActivity() {
                     DeviceInfoUiShared.Row.CPU_ABI,
                     DeviceInfoUiShared.Row.GPU,
                     DeviceInfoUiShared.Row.OPENGL_ES
-                )
+                ),
+                DeviceInfoUiShared.Section.HARDWARE to listOf(
+                    DeviceInfoUiShared.Row.HW_CAMERA,
+                    DeviceInfoUiShared.Row.HW_NFC,
+                    DeviceInfoUiShared.Row.HW_USB,
+                    DeviceInfoUiShared.Row.HW_AUDIO,
+                    DeviceInfoUiShared.Row.HW_BIOMETRIC,
+                    DeviceInfoUiShared.Row.HW_THERMAL,
+                ),
+                DeviceInfoUiShared.Section.SENSORS to listOf(
+                    DeviceInfoUiShared.Row.SENSOR_ACCELEROMETER,
+                    DeviceInfoUiShared.Row.SENSOR_GYROSCOPE,
+                    DeviceInfoUiShared.Row.SENSOR_MAGNETIC_FIELD,
+                    DeviceInfoUiShared.Row.SENSOR_LIGHT,
+                    DeviceInfoUiShared.Row.SENSOR_PROXIMITY,
+                    DeviceInfoUiShared.Row.SENSOR_PRESSURE,
+                    DeviceInfoUiShared.Row.SENSOR_HUMIDITY,
+                    DeviceInfoUiShared.Row.SENSOR_AMBIENT_TEMPERATURE,
+                    DeviceInfoUiShared.Row.SENSOR_HINGE_ANGLE,
+                ),
             )
             for ((sectionKey, rows) in phoneSchema) {
                 items += InfoItem.Section(sectionKey)
                 rows.forEach { rowKey -> items += rowForKey(rowKey) }
             }
+
             val list = findViewById<RecyclerView>(R.id.list)
             list.layoutManager = LinearLayoutManager(this)
             list.itemAnimator = null
             adapter = InfoAdapter(items)
             list.adapter = adapter
+            listSimDetailRowsVisible = info.simDetailRowsVisible
+            listExternalVolumeRowKeys = info.externalStorageVolumes.map { it.rowKey }
+            listNetworkSchemaSignature = info.wifiNetworkRowsVisible to info.simDetailRowsVisible
+            registerStreamSensors()
         } else {
-            updateDynamic(info, updateBattery = true, updateMemory = true, updateProcessor = true)
+            updateDynamic(
+                info,
+                updateBattery = true,
+                updateMemory = true,
+                updateProcessor = true,
+                updateNetwork = true,
+                updateDisplay = true,
+            )
         }
     }
 
@@ -361,10 +655,28 @@ class MainActivity : AppCompatActivity() {
         updateBattery: Boolean,
         updateMemory: Boolean,
         updateProcessor: Boolean = false,
-        updateNetwork: Boolean = false
+        updateNetwork: Boolean = false,
+        updateDisplay: Boolean = false,
     ) {
         if (adapter == null) return
-
+        if (updateNetwork) {
+            val schemaSig = info.wifiNetworkRowsVisible to info.simDetailRowsVisible
+            if (info.simDetailRowsVisible != listSimDetailRowsVisible ||
+                schemaSig != listNetworkSchemaSignature
+            ) {
+                adapter = null
+                showDeviceInfoList(info)
+                return
+            }
+        }
+        if (updateMemory) {
+            val volumeKeys = info.externalStorageVolumes.map { it.rowKey }
+            if (volumeKeys != listExternalVolumeRowKeys) {
+                adapter = null
+                showDeviceInfoList(info)
+                return
+            }
+        }
         for ((index, item) in items.withIndex()) {
             if (item is InfoItem.Row) {
                 when (item.key) {
@@ -377,12 +689,20 @@ class MainActivity : AppCompatActivity() {
                     DeviceInfoUiShared.Row.CURRENT,
                     DeviceInfoUiShared.Row.POWER,
                     DeviceInfoUiShared.Row.CHARGE_COUNTER,
-                    DeviceInfoUiShared.Row.CYCLE_COUNT ->
+                    DeviceInfoUiShared.Row.CYCLE_COUNT,
+                    DeviceInfoUiShared.Row.BATTERY_DESIGN_CAPACITY,
+                    DeviceInfoUiShared.Row.BATTERY_HEALTH_PERCENT,
+                    DeviceInfoUiShared.Row.CHARGE_TIME_REMAINING,
+                    DeviceInfoUiShared.Row.ADAPTIVE_CHARGING ->
                         if (updateBattery) {
                             items[index] = when (item.key) {
                                 DeviceInfoUiShared.Row.LEVEL -> item.copy(
                                     title = DeviceInfoUiShared.rowTitle(this, item.key),
-                                    value = DeviceInfoUiShared.levelText(this, info),
+                                    value = DeviceInfoUiShared.levelText(
+                                        this,
+                                        info,
+                                        DeviceInfoUiShared.DisplaySurface.PHONE,
+                                    ),
                                     iconResId = DeviceInfoUiShared.levelIconRes(info.batteryLevel, info.isPowerSaveMode)
                                 )
                                 DeviceInfoUiShared.Row.PLUGGED -> item.copy(
@@ -402,7 +722,7 @@ class MainActivity : AppCompatActivity() {
                                 )
                                 DeviceInfoUiShared.Row.TEMPERATURE -> item.copy(
                                     title = DeviceInfoUiShared.rowTitle(this, item.key),
-                                    value = String.format("%.1f °C", info.batteryTemperatureCelsius),
+                                    value = DeviceInfoUiShared.temperatureText(info.batteryTemperatureCelsius),
                                     iconResId = DeviceInfoUiShared.temperatureIconRes(info.batteryTemperatureCelsius)
                                 )
                                 DeviceInfoUiShared.Row.VOLTAGE -> item.copy(
@@ -427,8 +747,37 @@ class MainActivity : AppCompatActivity() {
                                 )
                                 DeviceInfoUiShared.Row.CYCLE_COUNT -> item.copy(
                                     title = DeviceInfoUiShared.rowTitle(this, item.key),
-                                    value = DeviceInfoUiShared.cycleCountText(info.cycleCount),
+                                    value = DeviceInfoUiShared.cycleCountText(this, info.cycleCount),
                                     iconResId = R.drawable.ic_row_cycle_count
+                                )
+                                DeviceInfoUiShared.Row.BATTERY_DESIGN_CAPACITY -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.batteryDesignCapacityText(
+                                        this,
+                                        info.batteryDesignCapacityMicroAh,
+                                    ),
+                                    iconResId = R.drawable.ic_row_battery_full,
+                                )
+                                DeviceInfoUiShared.Row.BATTERY_HEALTH_PERCENT -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.batteryHealthPercentText(
+                                        this,
+                                        info.batteryHealthPercent,
+                                    ),
+                                    iconResId = R.drawable.ic_row_health,
+                                )
+                                DeviceInfoUiShared.Row.CHARGE_TIME_REMAINING -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.chargeTimeRemainingText(
+                                        this,
+                                        info.chargeTimeRemainingMs,
+                                    ),
+                                    iconResId = R.drawable.ic_row_plugged,
+                                )
+                                DeviceInfoUiShared.Row.ADAPTIVE_CHARGING -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.adaptiveChargingText(this, info.adaptiveChargingState),
+                                    iconResId = R.drawable.ic_row_health
                                 )
                                 else -> item
                             }
@@ -461,15 +810,36 @@ class MainActivity : AppCompatActivity() {
                         if (updateProcessor) {
                             items[index] = item.copy(
                                 title = DeviceInfoUiShared.rowTitle(this, item.key),
-                                value = info.cpuCurrentFreq,
+                                value = DeviceInfoUiShared.sysfsReadingOrNotAvailable(this, info.cpuCurrentFreq),
                                 iconResId = R.drawable.ic_row_speed
                             )
                             adapter?.notifyItemChanged(index)
                         }
 
+                    DeviceInfoUiShared.Row.HW_THERMAL ->
+                        if (updateProcessor) {
+                            items[index] = item.copy(
+                                title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                value = DeviceInfoUiShared.compoundSummaryForDisplay(
+                                    this,
+                                    info.thermalSummary,
+                                    DeviceInfoUiShared.DisplaySurface.PHONE,
+                                ),
+                                iconResId = DeviceInfoUiShared.thermalIconRes(info.thermalSummary),
+                            )
+                            adapter?.notifyItemChanged(index)
+                        }
+
                     DeviceInfoUiShared.Row.CONNECTION,
+                    DeviceInfoUiShared.Row.INTERNET_VALIDATED,
+                    DeviceInfoUiShared.Row.CAPTIVE_PORTAL,
+                    DeviceInfoUiShared.Row.MULTI_NETWORK,
+                    DeviceInfoUiShared.Row.WIFI_BANDS,
+                    DeviceInfoUiShared.Row.WIFI_LINK_SPEED,
+                    DeviceInfoUiShared.Row.WIFI_SIGNAL,
                     DeviceInfoUiShared.Row.BLUETOOTH,
                     DeviceInfoUiShared.Row.CELLULAR,
+                    DeviceInfoUiShared.Row.CELLULAR_SIGNAL,
                     DeviceInfoUiShared.Row.CARRIER,
                     DeviceInfoUiShared.Row.SIM_STATE,
                     DeviceInfoUiShared.Row.SIM_COUNTRY,
@@ -485,6 +855,40 @@ class MainActivity : AppCompatActivity() {
                                     value = DeviceInfoUiShared.connectionLabel(this, info.connectionType),
                                     iconResId = DeviceInfoUiShared.connectionIconRes(info.connectionType)
                                 )
+                                DeviceInfoUiShared.Row.INTERNET_VALIDATED -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.internetValidatedDisplay(
+                                        this,
+                                        info.internetValidated,
+                                        info.connectionType,
+                                    ),
+                                    iconResId = DeviceInfoUiShared.connectionIconRes(info.connectionType),
+                                )
+                                DeviceInfoUiShared.Row.CAPTIVE_PORTAL -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.yesNoOptional(this, info.captivePortal),
+                                    iconResId = R.drawable.ic_row_wifi,
+                                )
+                                DeviceInfoUiShared.Row.MULTI_NETWORK -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.networkReadingOrNotAvailable(this, info.multiNetworkSummary),
+                                    iconResId = R.drawable.ic_row_wifi,
+                                )
+                                DeviceInfoUiShared.Row.WIFI_BANDS -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.networkReadingOrNotAvailable(this, info.wifiSupportedBandsSummary),
+                                    iconResId = R.drawable.ic_row_wifi,
+                                )
+                                DeviceInfoUiShared.Row.WIFI_LINK_SPEED -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.networkReadingOrNotAvailable(this, info.wifiLinkSpeedSummary),
+                                    iconResId = R.drawable.ic_row_wifi,
+                                )
+                                DeviceInfoUiShared.Row.WIFI_SIGNAL -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.networkReadingOrNotAvailable(this, info.wifiSignalSummary),
+                                    iconResId = R.drawable.ic_row_wifi,
+                                )
                                 DeviceInfoUiShared.Row.BLUETOOTH -> item.copy(
                                     title = DeviceInfoUiShared.rowTitle(this, item.key),
                                     value = DeviceInfoUiShared.bluetoothState(this, info.bluetoothOn),
@@ -494,6 +898,11 @@ class MainActivity : AppCompatActivity() {
                                     title = DeviceInfoUiShared.rowTitle(this, item.key),
                                     value = info.cellularType,
                                     iconResId = R.drawable.ic_row_cell_tower
+                                )
+                                DeviceInfoUiShared.Row.CELLULAR_SIGNAL -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = info.cellularSignalSummary,
+                                    iconResId = R.drawable.ic_row_cell_tower,
                                 )
                                 DeviceInfoUiShared.Row.CARRIER -> item.copy(
                                     title = DeviceInfoUiShared.rowTitle(this, item.key),
@@ -532,16 +941,182 @@ class MainActivity : AppCompatActivity() {
                                 )
                                 DeviceInfoUiShared.Row.BANDWIDTH -> item.copy(
                                     title = DeviceInfoUiShared.rowTitle(this, item.key),
-                                    value = "${DeviceInfoUiShared.formatBandwidthKbps(info.downstreamKbps)} / ${DeviceInfoUiShared.formatBandwidthKbps(info.upstreamKbps)}",
+                                    value = DeviceInfoUiShared.bandwidthDisplay(
+                                        this,
+                                        info.downstreamKbps,
+                                        info.upstreamKbps,
+                                        DeviceInfoUiShared.DisplaySurface.PHONE,
+                                    ),
                                     iconResId = R.drawable.ic_row_speed
                                 )
                                 else -> item
                             }
                             adapter?.notifyItemChanged(index)
                         }
+
+                    DeviceInfoUiShared.Row.RESOLUTION,
+                    DeviceInfoUiShared.Row.DISPLAY_DIAGONAL,
+                    DeviceInfoUiShared.Row.DENSITY,
+                    DeviceInfoUiShared.Row.REFRESH_RATE,
+                    DeviceInfoUiShared.Row.REFRESH_RATE_MODES,
+                    DeviceInfoUiShared.Row.HDR,
+                    DeviceInfoUiShared.Row.DISPLAY_ROTATION ->
+                        if (updateDisplay) {
+                            items[index] = when (item.key) {
+                                DeviceInfoUiShared.Row.RESOLUTION -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.resolutionDisplay(this, info.displayResolution),
+                                    iconResId = R.drawable.ic_row_model
+                                )
+                                DeviceInfoUiShared.Row.DISPLAY_DIAGONAL -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.displayDiagonalText(
+                                        this,
+                                        info.displayDiagonalInches,
+                                    ),
+                                    iconResId = R.drawable.ic_row_density,
+                                )
+                                DeviceInfoUiShared.Row.DENSITY -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.densityLabel(info.screenDensityDpi),
+                                    iconResId = R.drawable.ic_row_density
+                                )
+                                DeviceInfoUiShared.Row.REFRESH_RATE -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.refreshRateDisplay(this, info.displayRefreshRateHz),
+                                    iconResId = R.drawable.ic_row_refresh_rate
+                                )
+                                DeviceInfoUiShared.Row.REFRESH_RATE_MODES -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.displayRefreshModesText(this, info.displayRefreshModesSummary),
+                                    iconResId = R.drawable.ic_row_refresh_rate
+                                )
+                                DeviceInfoUiShared.Row.HDR -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.displayHdrSummaryText(this, info.displayHdrSummary),
+                                    iconResId = R.drawable.ic_row_extension
+                                )
+                                DeviceInfoUiShared.Row.DISPLAY_ROTATION -> item.copy(
+                                    title = DeviceInfoUiShared.rowTitle(this, item.key),
+                                    value = DeviceInfoUiShared.displayRotationLabel(this, currentDisplayRotationSurface()),
+                                    iconResId = R.drawable.ic_row_model
+                                )
+                                else -> item
+                            }
+                            adapter?.notifyItemChanged(index)
+                        }
+
+                    else -> {
+                        if (updateMemory && DeviceInfoUiShared.Row.isStorageVolumeRowKey(item.key)) {
+                            val vol = info.externalStorageVolumes.find { it.rowKey == item.key }
+                            if (vol != null) {
+                                items[index] = item.copy(
+                                    title = vol.title,
+                                    value = vol.summary,
+                                    iconResId = R.drawable.ic_row_storage,
+                                )
+                                adapter?.notifyItemChanged(index)
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+
+    /** Em dash only when a default sensor exists; otherwise localized not_available via UI mapping. */
+    private fun sensorRowValueForUi(rowKey: String, raw: String): String {
+        if (raw != SENSOR_ROW_WAITING) return raw
+        val type = SensorRowFormat.sensorTypeForRowKey(rowKey) ?: return notAvailableText()
+        val sm = getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return notAvailableText()
+        return if (sm.getDefaultSensor(type) != null) raw else notAvailableText()
+    }
+
+    private fun sensorDisplayForRow(rowKey: String): String {
+        latestSensorEvents[rowKey]?.let { e ->
+            return SensorRowFormat.format(e.sensor.type, e.values, e.sensor, this)
+        }
+        val type = SensorRowFormat.sensorTypeForRowKey(rowKey) ?: return notAvailableText()
+        val sm = getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return notAvailableText()
+        return if (sm.getDefaultSensor(type) != null) SENSOR_ROW_WAITING else notAvailableText()
+    }
+
+    private fun seedSensorRowPlaceholders() {
+        latestSensorEvents.clear()
+    }
+
+    private fun currentDisplayRotationSurface(): Int =
+        try {
+            window.decorView.display?.rotation
+        } catch (_: Exception) {
+            null
+        } ?: @Suppress("DEPRECATION")
+        (getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
+
+    private fun startSensorUiRefresh() {
+        handler.removeCallbacks(sensorUiRefreshRunnable)
+        handler.post(sensorUiRefreshRunnable)
+    }
+
+    private fun stopSensorUiRefresh() {
+        handler.removeCallbacks(sensorUiRefreshRunnable)
+    }
+
+    private fun applySensorRowUpdatesFromLatestEvents() {
+        if (adapter == null) return
+        for ((index, item) in items.withIndex()) {
+            if (item !is InfoItem.Row) continue
+            if (!item.key.startsWith("row_sensor_")) continue
+            val display = sensorRowValueForUi(item.key, sensorDisplayForRow(item.key))
+            if (display == item.value) continue
+            items[index] = item.copy(
+                title = DeviceInfoUiShared.rowTitle(this, item.key),
+                value = display,
+                iconResId = R.drawable.ic_row_sensor,
+            )
+            adapter?.notifyItemChanged(index)
+        }
+    }
+
+    private fun registerStreamSensors() {
+        if (adapter == null) return
+        unregisterStreamSensors()
+        val sm = getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return
+        for (t in SensorRowFormat.streamSensorTypes) {
+            sm.getDefaultSensor(t)?.let { s ->
+                sm.registerListener(sensorStreamListener, s, SensorManager.SENSOR_DELAY_UI, handler)
+            }
+        }
+    }
+
+    private fun unregisterStreamSensors() {
+        val sm = getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return
+        for (t in SensorRowFormat.streamSensorTypes) {
+            sm.getDefaultSensor(t)?.let { s ->
+                runCatching { sm.unregisterListener(sensorStreamListener, s) }
+            }
+        }
+    }
+
+    private fun refreshDisplayRotationRowItem() {
+        val label = DeviceInfoUiShared.displayRotationLabel(this, currentDisplayRotationSurface())
+        for ((index, item) in items.withIndex()) {
+            if (item !is InfoItem.Row) continue
+            if (item.key != DeviceInfoUiShared.Row.DISPLAY_ROTATION) continue
+            if (item.value == label) return
+            items[index] = item.copy(
+                title = DeviceInfoUiShared.rowTitle(this, item.key),
+                value = label,
+                iconResId = R.drawable.ic_row_model,
+            )
+            adapter?.notifyItemChanged(index)
+            return
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        refreshDisplayRotationRowItem()
     }
 
     private fun registerBatteryReceiver() {
@@ -549,7 +1124,12 @@ class MainActivity : AppCompatActivity() {
             addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
         }
-        registerReceiver(batteryReceiver, filter)
+        ContextCompat.registerReceiver(
+            this,
+            batteryReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
     }
 
     private fun registerNetworkCallback() {
@@ -602,20 +1182,28 @@ class MainActivity : AppCompatActivity() {
     private val memoryRefreshRunnable = object : Runnable {
         override fun run() {
             val info = DeviceInfoProvider.get(this@MainActivity)
-            updateDynamic(info, updateBattery = true, updateMemory = true, updateProcessor = true, updateNetwork = false)
-            handler.postDelayed(this, MEMORY_REFRESH_MS)
+            updateDynamic(
+                info,
+                updateBattery = true,
+                updateMemory = true,
+                updateProcessor = true,
+                updateNetwork = false,
+                updateDisplay = true,
+            )
+            handler.postDelayed(this, DeviceInfoUiShared.MEMORY_POLL_INTERVAL_MS)
         }
     }
 
     companion object {
-        private const val MEMORY_REFRESH_MS = 5_000L
+        private const val SENSOR_ROW_WAITING = "—"
+        private const val SENSOR_UI_REFRESH_INTERVAL_MS = 200L
         private var launchedSensitivePermissionRequestThisProcess = false
     }
 }
 
 private sealed class InfoItem {
     data class Section(val key: String) : InfoItem()
-    data class Row(val key: String, val title: String, val value: String, val iconResId: Int) : InfoItem()
+    data class Row(val key: String, val title: String, val value: CharSequence, val iconResId: Int) : InfoItem()
 }
 
 private class InfoAdapter(
@@ -677,7 +1265,7 @@ private class InfoAdapter(
         private val icon: ImageView = view.findViewById(R.id.icon)
         private val title: TextView = view.findViewById(R.id.title)
         private val value: TextView = view.findViewById(R.id.value)
-        fun bind(t: String, v: String, iconResId: Int, bgResId: Int) {
+        fun bind(t: String, v: CharSequence, iconResId: Int, bgResId: Int) {
             itemView.setBackgroundResource(bgResId)
             icon.setImageResource(iconResId)
             title.text = t

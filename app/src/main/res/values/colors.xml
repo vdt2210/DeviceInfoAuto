@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Light palette (default theme) -->
     <color name="light_window">#FFF2EDE6</color>
     <color name="light_panel">#FFFFFAF5</color>
     <color name="light_primary">#FF0F766E</color>
@@ -8,4 +9,24 @@
     <color name="light_text_primary">#FF1C221F</color>
     <color name="light_text_secondary">#FF5C635F</color>
     <color name="light_text_hint">#FF9A9F9C</color>
+
+    <!-- Dark palette (values-night/themes.xml) -->
+    <color name="night_window">#FF0A0A0A</color>
+    <color name="night_panel">#FF151515</color>
+    <color name="night_primary">#FF3FB0A6</color>
+    <color name="night_primary_dark">#FF2E968D</color>
+    <color name="night_accent">#FF5EEAD4</color>
+    <color name="night_text_primary">#FFF1F1F1</color>
+    <color name="night_text_secondary">#FFB5B5B5</color>
+    <color name="night_text_hint">#FF7A7A7A</color>
+
+    <!-- Danger on light surfaces -->
+    <color name="color_danger">#FFC62828</color>
+    <color name="color_danger_pressed">#FFB71C1C</color>
+    <color name="color_on_danger">#FFFFFFFF</color>
+
+    <!-- Danger on dark surfaces (đậm hơn #FF5252 để bớt chói trên nền tối) -->
+    <color name="night_danger">#FFD32F2F</color>
+    <color name="night_danger_pressed">#FFC62828</color>
+    <color name="night_on_danger">#FFFFFFFF</color>
 </resources>
