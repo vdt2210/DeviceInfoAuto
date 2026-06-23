@@ -35,7 +35,7 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
 
     private val telemetryPollRunnable = object : Runnable {
         override fun run() {
-            val info = DeviceInfoProvider.get(appCtx)
+            val info = DeviceInfoProvider.get(appCtx, DeviceInfoProvider.GetOptions.CarTelemetry)
             val snapshot = telemetrySnapshot(info)
             if (snapshot != lastTelemetrySnapshot) {
                 lastTelemetrySnapshot = snapshot
@@ -159,19 +159,7 @@ class DeviceInfoScreen(carContext: CarContext) : Screen(carContext) {
             .setTitle(ctx.getString(R.string.app_name))
             .setActionStrip(actionStrip)
             .apply {
-                val autoSchema = listOf(
-                    DeviceInfoUiShared.Section.BATTERY to buildList {
-                        add(DeviceInfoUiShared.Row.LEVEL)
-                        add(DeviceInfoUiShared.Row.PLUGGED)
-                        add(DeviceInfoUiShared.Row.HEALTH)
-                        add(DeviceInfoUiShared.Row.TEMPERATURE)
-                        add(DeviceInfoUiShared.Row.CURRENT)
-                        add(DeviceInfoUiShared.Row.POWER)
-                    },
-                    DeviceInfoUiShared.Section.RAM to listOf(
-                        DeviceInfoUiShared.Row.RAM
-                    ),
-                )
+                val autoSchema = DeviceInfoSchema.carSchema
                 autoSchema.forEach { (sectionKey, rows) ->
                     val sectionTitle = DeviceInfoUiShared.sectionTitle(ctx, sectionKey)
                     val list = ItemList.Builder().apply {

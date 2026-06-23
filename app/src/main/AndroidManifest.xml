@@ -48,7 +48,7 @@
             android:name=".DeviceInfoCarAppService"
             android:exported="true"
             android:foregroundServiceType="connectedDevice"
-            tools:targetApi="34">
+            tools:targetApi="35">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
                 <category android:name="androidx.car.app.category.IOT" />

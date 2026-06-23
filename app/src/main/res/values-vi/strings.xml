@@ -8,6 +8,7 @@
     <string name="settings_title">Cài đặt</string>
     <string name="settings_section_language">Ngôn ngữ</string>
     <string name="settings_language_hint">Chọn ngôn ngữ trong danh sách.</string>
+    <string name="language_system">Theo ngôn ngữ hệ thống</string>
     <string name="settings_save">Lưu</string>
     <string name="settings_section_appearance">Giao diện</string>
     <string name="settings_appearance_hint">Theo máy, hoặc cố định luôn sáng / luôn tối.</string>
@@ -16,8 +17,13 @@
     <string name="settings_unsaved_discard">Thoát</string>
     <string name="settings_unsaved_keep">Tiếp tục chỉnh</string>
     <string name="settings_section_permissions">Quyền</string>
-    <string name="settings_permissions_hint">Cấp hoặc xem lại quyền trong cài đặt hệ thống.</string>
+    <string name="settings_permissions_hint">Các dòng SIM/mạng di động và Bluetooth cần quyền tùy chọn bên dưới.</string>
+    <string name="settings_permissions_status_granted">Đã cấp đủ quyền tùy chọn.</string>
+    <string name="settings_permissions_status_missing">Còn thiếu: %1$s</string>
+    <string name="settings_action_request_permissions">Yêu cầu quyền</string>
     <string name="settings_action_app_settings">Mở thông tin ứng dụng</string>
+    <string name="permission_label_phone_state">Điện thoại (SIM &amp; mạng di động)</string>
+    <string name="permission_label_bluetooth_connect">Bluetooth</string>
     <string name="settings_section_reset">Khôi phục cài đặt gốc</string>
     <string name="settings_reset_summary">Khôi phục tất cả cài đặt ứng dụng về mặc định. Các dữ liệu khác của ứng dụng sẽ không bị ảnh hưởng.</string>
     <string name="settings_reset_button">Khôi phục</string>
@@ -51,6 +57,7 @@
     <string name="sim_state_loaded">Đã nạp</string>
 
     <string name="sim_kind_physical">SIM vật lý</string>
+    <string name="sim_kind_esim">eSIM</string>
 
     <string name="word_unknown">Không rõ</string>
 
@@ -64,6 +71,8 @@
     <string name="section_sensors">Cảm biến</string>
 
     <string name="not_available">Không khả dụng</string>
+    <string name="info_row_content_description">%1$s: %2$s</string>
+    <string name="info_section_content_description">Mục %1$s</string>
     <string name="sensor_proximity_near">Gần</string>
     <string name="sensor_proximity_far">Xa</string>
     <string name="sensor_row_accelerometer">Gia tốc kế (m/s²)</string>
@@ -92,16 +101,10 @@
     <string name="row_charge_counter">Điện lượng</string>
     <string name="row_cycle_count">Số chu kỳ sạc</string>
     <string name="row_battery_design_capacity">Dung lượng thiết kế</string>
-    <string name="row_battery_health_percent">Sức khỏe pin</string>
     <string name="row_charge_time_remaining">Thời gian sạc đầy</string>
     <string name="charge_time_hours_minutes">%1$d giờ %2$d phút</string>
     <string name="charge_time_hours_only">%1$d giờ</string>
     <string name="charge_time_minutes_only">%1$d phút</string>
-    <string name="row_adaptive_charging">Sạc thích ứng</string>
-    <string name="adaptive_charging_off">Tắt</string>
-    <string name="adaptive_charging_on">Bật</string>
-    <string name="adaptive_charging_active">Đang hoạt động (chính sách thích ứng)</string>
-    <string name="adaptive_charging_standard">Chuẩn</string>
     <string name="row_display_diagonal">Kích thước màn hình</string>
     <string name="row_resolution">Độ phân giải</string>
     <string name="row_density">Mật độ điểm ảnh</string>
@@ -136,6 +139,21 @@
     <string name="row_cellular_signal">Cường độ sóng di động</string>
     <string name="network_wifi_short">Wi‑Fi</string>
     <string name="multi_network_none">Không</string>
+    <string name="network_bluetooth">Bluetooth</string>
+    <string name="cellular_network_5g">5G</string>
+    <string name="cellular_network_5g_nsa">5G (NSA)</string>
+    <string name="cellular_network_lte">LTE</string>
+    <string name="cellular_network_hspa_plus">HSPA+</string>
+    <string name="cellular_network_hspa">HSPA</string>
+    <string name="cellular_network_hsdpa">HSDPA</string>
+    <string name="cellular_network_hsupa">HSUPA</string>
+    <string name="cellular_network_umts">UMTS</string>
+    <string name="cellular_network_edge">EDGE</string>
+    <string name="cellular_network_gprs">GPRS</string>
+    <string name="cellular_network_gsm">GSM</string>
+    <string name="cellular_network_iwlan">IWLAN</string>
+    <string name="cellular_network_td_scdma">TD-SCDMA</string>
+    <string name="scroll_to_top">Cuộn lên đầu</string>
     <string name="network_via_wifi">qua Wi‑Fi</string>
     <string name="network_via_cellular">qua di động</string>
     <string name="network_via_ethernet">qua Ethernet</string>
@@ -206,7 +224,6 @@
     <string name="connection_ethernet">Mạng dây</string>
     <string name="connection_online">Trực tuyến</string>
     <string name="connection_offline">Ngoại tuyến</string>
-    <string name="connection_unknown">@string/word_unknown</string>
 
     <string name="value_yes">Có</string>
     <string name="value_no">Không</string>

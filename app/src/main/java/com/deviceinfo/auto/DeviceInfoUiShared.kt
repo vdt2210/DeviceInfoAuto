@@ -15,6 +15,15 @@ object DeviceInfoUiShared {
     /** Stored list separator when building [DeviceInfo] (phone layout). */
     const val LIST_LINE_SEP = "\n"
 
+    /** Canonical tokens for [DeviceInfo.multiNetworkSummary] — translated at display time. */
+    object MultiNetworkToken {
+        const val NONE = "__multi_none__"
+        const val WIFI = "Wi-Fi"
+        const val CELLULAR = "Cellular"
+        const val ETHERNET = "Ethernet"
+        const val BLUETOOTH = "Bluetooth"
+    }
+
     /** Canonical storage separator for compound values (level + status, thermal + °C, …). */
     const val COMPOUND_SEP = ", "
 
@@ -76,9 +85,7 @@ object DeviceInfoUiShared {
         const val CHARGE_COUNTER = "row_charge_counter"
         const val CYCLE_COUNT = "row_cycle_count"
         const val BATTERY_DESIGN_CAPACITY = "row_battery_design_capacity"
-        const val BATTERY_HEALTH_PERCENT = "row_battery_health_percent"
         const val CHARGE_TIME_REMAINING = "row_charge_time_remaining"
-        const val ADAPTIVE_CHARGING = "row_adaptive_charging"
         const val RESOLUTION = "row_resolution"
         const val DISPLAY_DIAGONAL = "row_display_diagonal"
         const val DENSITY = "row_density"
@@ -175,9 +182,7 @@ object DeviceInfoUiShared {
             Row.CHARGE_COUNTER -> context.getString(R.string.row_charge_counter)
             Row.CYCLE_COUNT -> context.getString(R.string.row_cycle_count)
             Row.BATTERY_DESIGN_CAPACITY -> context.getString(R.string.row_battery_design_capacity)
-            Row.BATTERY_HEALTH_PERCENT -> context.getString(R.string.row_battery_health_percent)
             Row.CHARGE_TIME_REMAINING -> context.getString(R.string.row_charge_time_remaining)
-            Row.ADAPTIVE_CHARGING -> context.getString(R.string.row_adaptive_charging)
             Row.RESOLUTION -> context.getString(R.string.row_resolution)
             Row.DISPLAY_DIAGONAL -> context.getString(R.string.row_display_diagonal)
             Row.DENSITY -> context.getString(R.string.row_density)
@@ -306,6 +311,52 @@ object DeviceInfoUiShared {
         surface: DisplaySurface = DisplaySurface.PHONE,
     ): String = listSummaryForDisplay(context, raw, surface)
 
+    fun multiNetworkSummaryDisplay(
+        context: Context,
+        raw: String,
+        surface: DisplaySurface = DisplaySurface.PHONE,
+    ): String {
+        if (raw == DASH || raw.isBlank()) return valueNotAvailableLabel(context)
+        if (raw == MultiNetworkToken.NONE ||
+            raw.equals("No", ignoreCase = true) ||
+            raw == context.getString(R.string.multi_network_none)
+        ) {
+            return context.getString(R.string.multi_network_none)
+        }
+        val sep = if (surface == DisplaySurface.PHONE) LIST_LINE_SEP else BULLET_SEP
+        return raw.lineSequence()
+            .map { line -> multiNetworkLabelSingle(context, line.trim()) }
+            .joinToString(sep)
+    }
+
+    private fun multiNetworkLabelSingle(context: Context, label: String): String =
+        when (label) {
+            MultiNetworkToken.WIFI, "Wi-Fi", "Wi‑Fi" -> context.getString(R.string.network_wifi_short)
+            MultiNetworkToken.CELLULAR, "Cellular" -> context.getString(R.string.network_cellular)
+            MultiNetworkToken.ETHERNET, "Ethernet" -> context.getString(R.string.connection_ethernet)
+            MultiNetworkToken.BLUETOOTH, "Bluetooth" -> context.getString(R.string.network_bluetooth)
+            else -> label
+        }
+
+    fun cellularNetworkLabelDisplay(context: Context, raw: String): String =
+        when (raw) {
+            DASH, "" -> valueNotAvailableLabel(context)
+            "5G NR" -> context.getString(R.string.cellular_network_5g)
+            "5G NR (NSA)" -> context.getString(R.string.cellular_network_5g_nsa)
+            "LTE" -> context.getString(R.string.cellular_network_lte)
+            "HSPA+" -> context.getString(R.string.cellular_network_hspa_plus)
+            "HSPA" -> context.getString(R.string.cellular_network_hspa)
+            "HSDPA" -> context.getString(R.string.cellular_network_hsdpa)
+            "HSUPA" -> context.getString(R.string.cellular_network_hsupa)
+            "UMTS" -> context.getString(R.string.cellular_network_umts)
+            "EDGE" -> context.getString(R.string.cellular_network_edge)
+            "GPRS" -> context.getString(R.string.cellular_network_gprs)
+            "GSM" -> context.getString(R.string.cellular_network_gsm)
+            "IWLAN" -> context.getString(R.string.cellular_network_iwlan)
+            "TD-SCDMA" -> context.getString(R.string.cellular_network_td_scdma)
+            else -> raw
+        }
+
     fun onOff(context: Context, on: Boolean): String =
         if (on) context.getString(R.string.value_on) else context.getString(R.string.value_off)
 
@@ -408,6 +459,7 @@ object DeviceInfoUiShared {
     private fun simTypeSingleDisplay(context: Context, en: String): String =
         when (en) {
             "Physical" -> context.getString(R.string.sim_kind_physical)
+            "eSIM" -> context.getString(R.string.sim_kind_esim)
             else -> en
         }
 
@@ -521,13 +573,6 @@ object DeviceInfoUiShared {
         return String.format(Locale.getDefault(), "%,d mAh", mah)
     }
 
-    fun batteryHealthPercentText(context: Context, percent: Int?): String =
-        when {
-            percent == null -> context.getString(R.string.not_available)
-            percent !in 0..100 -> "—"
-            else -> "$percent%"
-        }
-
     fun internetValidatedDisplay(
         context: Context,
         validated: Boolean?,
@@ -543,8 +588,6 @@ object DeviceInfoUiShared {
         }
         return if (via != null) "$base ($via)" else base
     }
-
-    fun hasChargeTimeRemaining(ms: Long?): Boolean = ms != null && ms > 0L
 
     fun chargeTimeRemainingText(context: Context, ms: Long?): String {
         val remainingMs = ms ?: return "—"
@@ -568,18 +611,6 @@ object DeviceInfoUiShared {
             String.format(Locale.US, "%.1f\"", inches)
         }
 
-    fun adaptiveChargingText(context: Context, stateKey: String): String =
-        when (stateKey) {
-            DeviceInfoProvider.AdaptiveChargingKey.NA,
-            "" -> context.getString(R.string.not_available)
-            DeviceInfoProvider.AdaptiveChargingKey.OFF -> context.getString(R.string.adaptive_charging_off)
-            DeviceInfoProvider.AdaptiveChargingKey.ON -> context.getString(R.string.adaptive_charging_on)
-            DeviceInfoProvider.AdaptiveChargingKey.ACTIVE -> context.getString(R.string.adaptive_charging_active)
-            DeviceInfoProvider.AdaptiveChargingKey.STANDARD -> context.getString(R.string.adaptive_charging_standard)
-            DeviceInfoProvider.AdaptiveChargingKey.UNKNOWN -> "—"
-            else -> context.getString(R.string.not_available)
-        }
-
     fun healthIconRes(health: String): Int =
         when (health) {
             "Good" -> R.drawable.ic_row_health
@@ -587,17 +618,19 @@ object DeviceInfoUiShared {
             else -> R.drawable.ic_row_error
         }
 
-    fun levelIconRes(level: Int, isPowerSaveMode: Boolean): Int =
-        when {
-            level < 13 -> R.drawable.ic_row_battery_0
-            level < 25 -> R.drawable.ic_row_battery_1
-            level < 38 -> R.drawable.ic_row_battery_2
-            level < 50 -> R.drawable.ic_row_battery_3
-            level < 63 -> R.drawable.ic_row_battery_4
-            level < 75 -> R.drawable.ic_row_battery_5
-            level < 88 -> R.drawable.ic_row_battery_6
+    fun levelIconRes(level: Int, isPowerSaveMode: Boolean): Int {
+        val effective = if (isPowerSaveMode) minOf(level, 62) else level
+        return when {
+            effective < 13 -> R.drawable.ic_row_battery_0
+            effective < 25 -> R.drawable.ic_row_battery_1
+            effective < 38 -> R.drawable.ic_row_battery_2
+            effective < 50 -> R.drawable.ic_row_battery_3
+            effective < 63 -> R.drawable.ic_row_battery_4
+            effective < 75 -> R.drawable.ic_row_battery_5
+            effective < 88 -> R.drawable.ic_row_battery_6
             else -> R.drawable.ic_row_battery_full
         }
+    }
 
     fun temperatureIconRes(tempC: Float): Int =
         when {
@@ -632,8 +665,8 @@ object DeviceInfoUiShared {
             else -> R.drawable.ic_row_unknown
         }
 
-    /** Phone diagnostics list: RAM, battery, thermal, display rotation. */
-    const val MEMORY_POLL_INTERVAL_MS = 5_000L
+    /** Phone: RAM, CPU freq, display rotation (battery updates via sticky broadcast, not this poll). */
+    const val PHONE_LIVE_POLL_INTERVAL_MS = 5_000L
 
     /** Android Auto: only cadence for live rows (pin, dòng, công suất, RAM); no broadcast rebuilds. */
     const val CAR_TELEMETRY_POLL_INTERVAL_MS = 5_000L

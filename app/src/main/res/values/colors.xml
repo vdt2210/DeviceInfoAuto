@@ -29,4 +29,8 @@
     <color name="night_danger">#FFD32F2F</color>
     <color name="night_danger_pressed">#FFC62828</color>
     <color name="night_on_danger">#FFFFFFFF</color>
+
+    <!-- Frosted scroll-to-top chip (API 31+ blur path only) -->
+    <color name="scroll_to_top_glass_overlay">#66F5F5F5</color>
+    <color name="scroll_to_top_glass_stroke">#40FFFFFF</color>
 </resources>

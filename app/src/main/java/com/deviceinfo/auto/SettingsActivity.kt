@@ -12,7 +12,9 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.RadioGroup
 import android.widget.Spinner
+import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -22,6 +24,12 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var prefs: AppPreferences
     private lateinit var spinner: Spinner
     private lateinit var themeGroup: RadioGroup
+    private lateinit var textPermissionsStatus: TextView
+    private lateinit var buttonRequestPermissions: Button
+
+    private val sensitivePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { bindPermissionsUi() }
 
     private var suppressChanges = true
     private var savedLanguageIndex = 0
@@ -45,7 +53,7 @@ class SettingsActivity : AppCompatActivity() {
         themeGroup = findViewById(R.id.radio_theme)
 
         val languageOptions = listOf(
-            getString(R.string.theme_system),
+            getString(R.string.language_system),
             "English",
             "Tiếng Việt",
         )
@@ -54,6 +62,11 @@ class SettingsActivity : AppCompatActivity() {
         spinner.adapter = adapter
 
         bindUiFromPrefs()
+
+        textPermissionsStatus = findViewById(R.id.text_permissions_status)
+        buttonRequestPermissions = findViewById(R.id.button_request_permissions)
+        buttonRequestPermissions.setOnClickListener { requestSensitivePermissions() }
+        bindPermissionsUi()
 
         findViewById<Button>(R.id.button_open_app_settings).setOnClickListener { openAppDetailsSettings() }
         findViewById<Button>(R.id.button_reset_defaults).setOnClickListener { confirmResetDefaults() }
@@ -77,6 +90,31 @@ class SettingsActivity : AppCompatActivity() {
                 suppressChanges = false
                 updateDirtyUi()
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        bindPermissionsUi()
+    }
+
+    private fun bindPermissionsUi() {
+        val denied = SensitivePermissions.denied(this)
+        textPermissionsStatus.text = if (denied.isEmpty()) {
+            getString(R.string.settings_permissions_status_granted)
+        } else {
+            getString(
+                R.string.settings_permissions_status_missing,
+                SensitivePermissions.missingLabels(this).joinToString(", "),
+            )
+        }
+        buttonRequestPermissions.isEnabled = denied.isNotEmpty()
+    }
+
+    private fun requestSensitivePermissions() {
+        val denied = SensitivePermissions.denied(this)
+        if (denied.isNotEmpty()) {
+            sensitivePermissionLauncher.launch(denied.toTypedArray())
         }
     }
 

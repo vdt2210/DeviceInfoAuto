@@ -163,11 +163,36 @@
                     android:textColor="?android:attr/textColorSecondary"
                     android:textSize="14sp" />
 
+                <TextView
+                    android:id="@+id/text_permissions_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="8dp"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/button_request_permissions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:minHeight="52dp"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="12dp"
+                    android:text="@string/settings_action_request_permissions"
+                    android:textAllCaps="false"
+                    android:textSize="16sp"
+                    android:background="@drawable/btn_settings_primary"
+                    android:elevation="0dp"
+                    android:stateListAnimator="@null"
+                    android:translationZ="0dp"
+                    android:textColor="?android:attr/textColorPrimaryInverse" />
+
                 <Button
                     android:id="@+id/button_open_app_settings"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
+                    android:layout_marginTop="8dp"
                     android:minHeight="52dp"
                     android:paddingHorizontal="16dp"
                     android:paddingVertical="12dp"

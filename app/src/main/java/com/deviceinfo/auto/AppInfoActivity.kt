@@ -50,7 +50,7 @@ class AppInfoActivity : AppCompatActivity() {
     }
 
     private fun formatLibrariesList(): String =
-        ABOUT_LIBRARY_LINES.joinToString("\n") { "• $it" }
+        AboutLibraries.displayLines.joinToString("\n") { "• $it" }
 
     private fun bindHtmlLink(textViewId: Int, url: String, labelRes: Int) {
         findViewById<TextView>(textViewId).apply {
@@ -74,16 +74,6 @@ class AppInfoActivity : AppCompatActivity() {
     override fun onSupportNavigateUp(): Boolean = defaultFinishOnNavigateUp()
 
     companion object {
-        // Sync with app/build.gradle.kts when dependencies change.
-        private val ABOUT_LIBRARY_LINES = listOf(
-            "AndroidX Core KTX 1.12.0",
-            "AndroidX Activity 1.8.2",
-            "AndroidX AppCompat 1.6.1",
-            "AndroidX Car App Library 1.4.0",
-            "AndroidX RecyclerView 1.3.2",
-            "AndroidX SwipeRefreshLayout 1.1.0",
-        )
-
         private const val AUTHOR_CREDIT = "vdt2210"
         private const val AUTHOR_GITHUB_URL = "https://github.com/vdt2210"
         private const val SOURCE_REPO_URL = "https://github.com/vdt2210/DeviceInfoAuto"

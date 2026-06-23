@@ -1,1 +1,4 @@
 -keep class androidx.car.app.** { *; }
+-keep class com.deviceinfo.auto.DeviceInfo { *; }
+-keep class com.deviceinfo.auto.DeviceInfoProvider { *; }
+-keepclassmembers class com.deviceinfo.auto.DeviceInfoProvider$* { *; }

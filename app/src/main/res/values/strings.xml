@@ -8,6 +8,7 @@
     <string name="settings_title">Settings</string>
     <string name="settings_section_language">Language</string>
     <string name="settings_language_hint">Select a language from the list.</string>
+    <string name="language_system">Use system language</string>
     <string name="settings_save">Save</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_appearance_hint">Follow your device, or pin the app to always light or always dark.</string>
@@ -16,8 +17,13 @@
     <string name="settings_unsaved_discard">Discard</string>
     <string name="settings_unsaved_keep">Keep editing</string>
     <string name="settings_section_permissions">Permissions</string>
-    <string name="settings_permissions_hint">Grant or review permissions in system settings.</string>
+    <string name="settings_permissions_hint">SIM/cellular and Bluetooth rows need optional permissions below.</string>
+    <string name="settings_permissions_status_granted">All optional permissions granted.</string>
+    <string name="settings_permissions_status_missing">Missing: %1$s</string>
+    <string name="settings_action_request_permissions">Request permissions</string>
     <string name="settings_action_app_settings">Open app info</string>
+    <string name="permission_label_phone_state">Phone (SIM &amp; cellular)</string>
+    <string name="permission_label_bluetooth_connect">Bluetooth</string>
     <string name="settings_section_reset">Restore default settings</string>
     <string name="settings_reset_summary">Restores all app settings to defaults. Your other app data is not affected.</string>
     <string name="settings_reset_button">Restore</string>
@@ -51,6 +57,7 @@
     <string name="sim_state_loaded">Loaded</string>
 
     <string name="sim_kind_physical">Physical SIM</string>
+    <string name="sim_kind_esim">eSIM</string>
 
     <string name="word_unknown">Unknown</string>
 
@@ -64,6 +71,8 @@
     <string name="section_sensors">Sensors</string>
 
     <string name="not_available">Not available</string>
+    <string name="info_row_content_description">%1$s: %2$s</string>
+    <string name="info_section_content_description">%1$s section</string>
     <string name="sensor_proximity_near">Near</string>
     <string name="sensor_proximity_far">Far</string>
     <string name="sensor_row_accelerometer">Accelerometer (m/s²)</string>
@@ -92,16 +101,10 @@
     <string name="row_charge_counter">Charge counter</string>
     <string name="row_cycle_count">Cycle count</string>
     <string name="row_battery_design_capacity">Design capacity</string>
-    <string name="row_battery_health_percent">Battery health</string>
     <string name="row_charge_time_remaining">Time to full</string>
     <string name="charge_time_hours_minutes">%1$d h %2$d min</string>
     <string name="charge_time_hours_only">%1$d h</string>
     <string name="charge_time_minutes_only">%1$d min</string>
-    <string name="row_adaptive_charging">Adaptive charging</string>
-    <string name="adaptive_charging_off">Off</string>
-    <string name="adaptive_charging_on">On</string>
-    <string name="adaptive_charging_active">Active (adaptive policy)</string>
-    <string name="adaptive_charging_standard">Standard</string>
     <string name="row_display_diagonal">Screen size</string>
     <string name="row_resolution">Resolution</string>
     <string name="row_density">Density</string>
@@ -136,6 +139,21 @@
     <string name="row_cellular_signal">Cellular signal</string>
     <string name="network_wifi_short">Wi‑Fi</string>
     <string name="multi_network_none">No</string>
+    <string name="network_bluetooth">Bluetooth</string>
+    <string name="cellular_network_5g">5G</string>
+    <string name="cellular_network_5g_nsa">5G (NSA)</string>
+    <string name="cellular_network_lte">LTE</string>
+    <string name="cellular_network_hspa_plus">HSPA+</string>
+    <string name="cellular_network_hspa">HSPA</string>
+    <string name="cellular_network_hsdpa">HSDPA</string>
+    <string name="cellular_network_hsupa">HSUPA</string>
+    <string name="cellular_network_umts">UMTS</string>
+    <string name="cellular_network_edge">EDGE</string>
+    <string name="cellular_network_gprs">GPRS</string>
+    <string name="cellular_network_gsm">GSM</string>
+    <string name="cellular_network_iwlan">IWLAN</string>
+    <string name="cellular_network_td_scdma">TD-SCDMA</string>
+    <string name="scroll_to_top">Scroll to top</string>
     <string name="network_via_wifi">via Wi‑Fi</string>
     <string name="network_via_cellular">via mobile</string>
     <string name="network_via_ethernet">via Ethernet</string>
@@ -206,7 +224,6 @@
     <string name="connection_ethernet">Ethernet</string>
     <string name="connection_online">Online</string>
     <string name="connection_offline">Offline</string>
-    <string name="connection_unknown">@string/word_unknown</string>
 
     <string name="value_yes">Yes</string>
     <string name="value_no">No</string>
