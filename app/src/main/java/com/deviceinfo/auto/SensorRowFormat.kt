@@ -43,7 +43,10 @@ object SensorRowFormat {
         Sensor.TYPE_LIGHT -> if (v.isEmpty()) EM_DASH else String.format(Locale.US, "%.1f lx", v[0])
         Sensor.TYPE_PRESSURE -> if (v.isEmpty()) EM_DASH else String.format(Locale.US, "%.2f hPa", v[0])
         Sensor.TYPE_RELATIVE_HUMIDITY -> if (v.isEmpty()) EM_DASH else String.format(Locale.US, "%.1f %%", v[0])
-        Sensor.TYPE_AMBIENT_TEMPERATURE -> if (v.isEmpty()) EM_DASH else String.format(Locale.US, "%.1f °C", v[0])
+        Sensor.TYPE_AMBIENT_TEMPERATURE -> if (v.isEmpty()) EM_DASH else {
+            val ctx = context ?: return EM_DASH
+            MeasurementUnits.temperature(ctx, v[0])
+        }
         Sensor.TYPE_PROXIMITY -> formatProximity(v, sensor, context)
         Sensor.TYPE_HINGE_ANGLE -> if (v.isEmpty()) EM_DASH else String.format(Locale.US, "%.1f°", v[0])
         else -> context?.notAvailableText() ?: EM_DASH

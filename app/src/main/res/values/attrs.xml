@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <attr name="colorDestructive" format="reference" />
-    <attr name="colorDestructivePressed" format="reference" />
-    <attr name="colorOnDestructive" format="reference" />
+    <attr name="deviceInfoButtonStyle" format="reference" />
+    <attr name="deviceInfoButtonVariant" format="enum">
+        <enum name="primary" value="0" />
+        <enum name="danger" value="1" />
+    </attr>
+
+    <declare-styleable name="DeviceInfoButton">
+        <attr name="deviceInfoButtonVariant" />
+    </declare-styleable>
 </resources>

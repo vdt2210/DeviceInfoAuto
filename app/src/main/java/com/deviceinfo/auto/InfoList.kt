@@ -80,8 +80,10 @@ class InfoListAdapter : ListAdapter<InfoItem, RecyclerView.ViewHolder>(InfoItemD
                     ctx.getString(R.string.info_section_content_description, title)
             }
             is InfoItem.Row -> {
-                val isFirstInGroup = position > 0 && getItem(position - 1) is InfoItem.Section
-                val isLastInGroup = position == itemCount - 1 || getItem(position + 1) is InfoItem.Section
+                val isFirstInGroup =
+                    position == 0 || getItem(position - 1) is InfoItem.Section
+                val isLastInGroup =
+                    position == itemCount - 1 || getItem(position + 1) is InfoItem.Section
                 val bgRes = when {
                     isFirstInGroup && isLastInGroup -> R.drawable.bg_group_item_single
                     isFirstInGroup -> R.drawable.bg_group_item_top

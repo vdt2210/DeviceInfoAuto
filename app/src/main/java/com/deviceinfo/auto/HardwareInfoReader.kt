@@ -9,7 +9,6 @@ import android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICA
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.AudioManager
-import android.nfc.NfcAdapter
 import android.os.Build
 import android.os.PowerManager
 import android.util.Size
@@ -17,19 +16,14 @@ import java.io.File
 import java.util.Locale
 import kotlin.math.sqrt
 
-/** Phone-only hardware summaries (camera, NFC, USB, audio, biometrics, thermal). */
+/** Phone-only hardware summaries (camera, audio, biometrics, thermal). */
 object HardwareInfoReader {
-
-    /** [PackageManager.FEATURE_USB_TYPE_C] — not in all public SDK stubs. */
-    private const val FEATURE_USB_TYPE_C = "android.hardware.usb.type_c"
 
     /** [PackageManager.FEATURE_IRIS] — not in all public SDK stubs. */
     private const val FEATURE_IRIS = "android.hardware.biometrics.iris"
 
     data class Summaries(
         val camera: String,
-        val nfc: String,
-        val usb: String,
         val audio: String,
         val biometric: String,
         val thermal: String,
@@ -42,8 +36,6 @@ object HardwareInfoReader {
         val ctx = localeContext(context)
         return Summaries(
             camera = readCameraSummary(ctx),
-            nfc = readNfcSummary(ctx),
-            usb = readUsbSummary(ctx),
             audio = readAudioSummary(ctx),
             biometric = readBiometricSummary(ctx),
             thermal = readThermalSummary(ctx),
@@ -263,7 +255,8 @@ object HardwareInfoReader {
         detail.focalLengthMm?.let { parts.add(context.getString(R.string.hw_camera_focal_mm, it)) }
         if (detail.hasOis) parts.add(context.getString(R.string.hw_camera_ois))
         if (parts.isEmpty()) return null
-        return DeviceInfoUiShared.BULLET_SEP + parts.joinToString(DeviceInfoUiShared.BULLET_SEP)
+        return DeviceInfoUiShared.LIST_BULLET_PREFIX +
+            parts.joinToString(DeviceInfoUiShared.FIELD_SEP)
     }
 
     private fun resolveMaxResolution(chars: CameraCharacteristics): Pair<Size?, Int?> {
@@ -308,47 +301,6 @@ object HardwareInfoReader {
         return kotlin.math.round(mp).toInt().coerceAtLeast(1)
     }
 
-    fun readNfcSummary(context: Context): String {
-        val pm = context.packageManager
-        if (!pm.hasSystemFeature(PackageManager.FEATURE_NFC)) {
-            return context.getString(R.string.nfc_not_supported)
-        }
-        val adapter = NfcAdapter.getDefaultAdapter(context)
-            ?: return context.getString(R.string.nfc_not_supported)
-        return if (adapter.isEnabled) {
-            context.getString(R.string.value_on)
-        } else {
-            context.getString(R.string.value_off)
-        }
-    }
-
-    fun readUsbSummary(context: Context): String {
-        val pm = context.packageManager
-        val parts = buildList {
-            if (pm.hasSystemFeature(PackageManager.FEATURE_USB_HOST)) {
-                add(context.getString(R.string.hw_usb_host))
-            }
-            if (pm.hasSystemFeature(PackageManager.FEATURE_USB_ACCESSORY)) {
-                add(context.getString(R.string.hw_usb_accessory))
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                pm.hasSystemFeature(FEATURE_USB_TYPE_C)
-            ) {
-                add(context.getString(R.string.hw_usb_type_c))
-            }
-        }
-        if (parts.isEmpty()) return context.getString(R.string.value_no)
-        val usbManager = context.getSystemService(Context.USB_SERVICE) as? android.hardware.usb.UsbManager
-        val attached = usbManager?.deviceList?.size ?: 0
-        return if (attached > 0) {
-            DeviceInfoUiShared.joinList(
-                parts + context.getString(R.string.hw_usb_devices_attached, attached),
-            )
-        } else {
-            DeviceInfoUiShared.joinList(parts)
-        }
-    }
-
     fun readAudioSummary(context: Context): String {
         val pm = context.packageManager
         val parts = buildList {
@@ -391,14 +343,14 @@ object HardwareInfoReader {
     fun readThermalSummary(context: Context): String {
         val ctx = localeContext(context)
         val parts = mutableListOf<String>()
+        readSocThermalMaxCelsius()?.let { c ->
+            parts.add(MeasurementUnits.encodeTempCelsius(c))
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
             if (pm != null) {
                 parts.add(thermalStatusLabel(ctx, pm.currentThermalStatus))
             }
-        }
-        readSocThermalMaxCelsius()?.let { c ->
-            parts.add(String.format(Locale.US, "%.1f °C", c))
         }
         return parts.joinToString(DeviceInfoUiShared.COMPOUND_SEP).ifEmpty { "—" }
     }
@@ -422,32 +374,71 @@ object HardwareInfoReader {
             else -> context.getString(R.string.word_unknown)
         }
 
-    /** Best-effort max SoC/skin temp from sysfs thermal zones (millidegrees). */
+    private val preferredSocThermalTypeHints = listOf(
+        "cpu", "soc", "tsens", "shell", "cluster", "ap", "gpu", "skin", "mtk", "qcom",
+        "pack", "ddr", "npu", "big", "little", "silver", "gold", "prime", "aoss",
+        "center", "tsensor", "processor", "cx", "nx", "sx", "l3", "l2",
+    )
+
+    private val peripheralThermalTypeHints = listOf(
+        "battery", "batt", "charger", "chg", "usb", "wifi", "wlan", "bt", "bluetooth",
+        "modem", "nfc", "cam", "camera", "display", "lcd", "oled", "panel", "pa_",
+        "fuel", "dock", "hdmi", "speaker", "ear", "plug", "wireless", "qi", "flash",
+        "led", "ambient", "room", "finger", "palm", "keyboard",
+    )
+
+    internal fun isPreferredSocThermalZoneType(type: String): Boolean {
+        val normalized = type.trim().lowercase(Locale.US)
+        if (normalized.isEmpty()) return false
+        return preferredSocThermalTypeHints.any { normalized.contains(it) }
+    }
+
+    internal fun isPeripheralThermalZoneType(type: String): Boolean {
+        val normalized = type.trim().lowercase(Locale.US)
+        if (normalized.isEmpty()) return false
+        return peripheralThermalTypeHints.any { normalized.contains(it) }
+    }
+
+    internal fun parseThermalZoneTempCelsius(raw: Int): Float? {
+        val c = when {
+            raw > 1000 -> raw / 1000f
+            else -> raw.toFloat()
+        }
+        return c.takeIf { it in 1f..120f }
+    }
+
+    /**
+     * Best-effort max SoC/skin temp from sysfs thermal zones (millidegrees).
+     *
+     * Many OEMs block or hide `/sys/class/thermal` from unprivileged apps (SELinux, sysfs
+     * permissions, or no exported zones), so this often returns null even though the device has
+     * sensors. [readThermalSummary] still shows [PowerManager.getCurrentThermalStatus] on API 29+.
+     */
     fun readSocThermalMaxCelsius(): Float? {
-        val thermalRoot = File("/sys/class/thermal")
+        readThermalMaxCelsiusFromRoot(File("/sys/class/thermal"))?.let { return it }
+        return readThermalMaxCelsiusFromRoot(File("/sys/devices/virtual/thermal"))
+    }
+
+    private fun readThermalMaxCelsiusFromRoot(thermalRoot: File): Float? {
         if (!thermalRoot.isDirectory) return null
-        var maxC: Float? = null
+        var maxPreferred: Float? = null
+        var maxFallback: Float? = null
         thermalRoot.listFiles()?.forEach { zone ->
             if (!zone.name.startsWith("thermal_zone")) return@forEach
             val type = runCatching {
                 File(zone, "type").readText().trim().lowercase(Locale.US)
-            }.getOrNull() ?: return@forEach
-            if (!type.contains("cpu") && !type.contains("soc") && !type.contains("tsens") &&
-                !type.contains("shell") && !type.contains("cluster")
-            ) {
-                return@forEach
-            }
+            }.getOrNull().orEmpty()
             val raw = runCatching { File(zone, "temp").readText().trim().toIntOrNull() }.getOrNull()
                 ?: return@forEach
-            val c = when {
-                raw > 1000 -> raw / 1000f
-                else -> raw.toFloat()
-            }
-            if (c in 1f..120f) {
-                maxC = if (maxC == null) c else maxOf(maxC!!, c)
+            val c = parseThermalZoneTempCelsius(raw) ?: return@forEach
+            when {
+                isPreferredSocThermalZoneType(type) ->
+                    maxPreferred = if (maxPreferred == null) c else maxOf(maxPreferred!!, c)
+                !isPeripheralThermalZoneType(type) ->
+                    maxFallback = if (maxFallback == null) c else maxOf(maxFallback!!, c)
             }
         }
-        return maxC
+        return maxPreferred ?: maxFallback
     }
 
     fun diagonalInchesFromMetrics(

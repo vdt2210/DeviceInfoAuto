@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="tab_navigation_item_size">56dp</dimen>
+    <dimen name="tab_active_indicator_size">40dp</dimen>
+    <dimen name="tab_active_indicator_corner_radius">12dp</dimen>
+    <dimen name="tab_active_indicator_horizontal_inset">8dp</dimen>
+    <dimen name="navigation_focus_vertical_inset">8dp</dimen>
+    <dimen name="navigation_focus_stroke_width">2dp</dimen>
+    <dimen name="section_rail_width">64dp</dimen>
+</resources>

@@ -14,7 +14,7 @@ fun AppCompatActivity.setContentWithEdgeBarsAndUpToolbar(
 ) {
     applyTransparentSystemBars()
     setContentView(layoutResId)
-    findViewById<View>(R.id.root).applyLegacyStatusBarInset()
+    findViewById<View>(R.id.root).applySystemBarInsets()
     val toolbar = findViewById<Toolbar>(R.id.toolbar)
     setSupportActionBar(toolbar)
     supportActionBar?.setDisplayHomeAsUpEnabled(true)

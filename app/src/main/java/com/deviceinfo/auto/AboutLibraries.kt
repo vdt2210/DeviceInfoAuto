@@ -8,10 +8,13 @@ object AboutLibraries {
     val displayLines: List<String> = listOf(
         "AndroidX Core KTX 1.12.0",
         "AndroidX Activity 1.8.2",
+        "AndroidX Fragment 1.8.5",
         "AndroidX Lifecycle ViewModel / Runtime 2.7.0",
         "AndroidX AppCompat 1.6.1",
         "AndroidX Car App Library 1.4.0",
         "AndroidX RecyclerView 1.3.2",
         "AndroidX SwipeRefreshLayout 1.1.0",
+        "AndroidX ViewPager2 1.1.0",
+        "Material Components for Android 1.12.0",
     )
 }

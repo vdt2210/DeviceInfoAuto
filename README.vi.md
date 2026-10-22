@@ -14,7 +14,7 @@ Google thường yêu cầu ứng dụng Android Auto phải được cài qua *
 
 ### Yêu cầu thiết bị
 
-- **Android 11 trở lên** (API 30+)
+- **Android 10 trở lên** (API 29+)
 
 ### Cài trên điện thoại
 
@@ -54,14 +54,14 @@ Google thường yêu cầu ứng dụng Android Auto phải được cài qua *
 
 **Thiết bị Android**
 
-- **Android 11+**
+- **Android 10+**
 - **Android Auto**
 
 **Tham chiếu Gradle (`app/build.gradle.kts`)**
 
 - `compileSdk` → **36**
-- `minSdk` → **30** (Android 11+)
-- `targetSdk` → **34**
+- `minSdk` → **29** (Android 10+)
+- `targetSdk` → **36**
 - `namespace` → `com.deviceinfo.auto`
 - `applicationId` → `com.vdt2210.deviceinfo`
 
@@ -69,7 +69,7 @@ Google thường yêu cầu ứng dụng Android Auto phải được cài qua *
 
 1. **Clone** repo này về máy.
 2. Mở thư mục project trong **Android Studio** và **Sync Project with Gradle Files**.
-3. Chạy cấu hình **app** trên **thiết bị thật** có **Android 11+** (Android Auto thường không thử đủ trên emulator thông thường).
+3. Chạy cấu hình **app** trên **thiết bị thật** có **Android 10+** (Android Auto thường không thử đủ trên emulator thông thường).
 4. Để thử **giao diện xe**: bật chế độ nhà phát triển **Android Auto** và **Nguồn không xác định** trên điện thoại; kết nối **DHU** trên PC nếu dùng — [Android Auto — DHU](https://developer.android.com/training/cars/testing/dhu).
 5. Để tạo **APK release đã ký**, cấu hình ký app trong Android Studio hoặc Gradle, rồi chạy `./gradlew assembleRelease`.
 

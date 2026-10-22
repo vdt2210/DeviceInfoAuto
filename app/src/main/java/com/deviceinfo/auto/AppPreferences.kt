@@ -14,7 +14,13 @@ class AppPreferences(context: Context) {
     enum class ThemeMode {
         SYSTEM,
         LIGHT,
-        DARK
+        DARK,
+    }
+
+    enum class UnitMode {
+        AUTO,
+        METRIC,
+        IMPERIAL,
     }
 
     fun getThemeMode(): ThemeMode = when (prefs.getString(KEY_THEME, "system")) {
@@ -45,6 +51,31 @@ class AppPreferences(context: Context) {
         applyLocales()
     }
 
+    fun getUnitMode(): UnitMode = when (readUnitModePref()) {
+        "metric" -> UnitMode.METRIC
+        "imperial" -> UnitMode.IMPERIAL
+        else -> UnitMode.AUTO
+    }
+
+    fun setUnitMode(mode: UnitMode) {
+        prefs.edit()
+            .putString(
+                KEY_UNITS,
+                when (mode) {
+                    UnitMode.METRIC -> "metric"
+                    UnitMode.IMPERIAL -> "imperial"
+                    UnitMode.AUTO -> "auto"
+                },
+            )
+            .remove(KEY_UNITS_LEGACY)
+            .apply()
+    }
+
+    private fun readUnitModePref(): String =
+        prefs.getString(KEY_UNITS, null)
+            ?: prefs.getString(KEY_UNITS_LEGACY, "auto")
+            ?: "auto"
+
     fun applyToDelegate() {
         applyNightMode()
         applyLocales()
@@ -54,6 +85,8 @@ class AppPreferences(context: Context) {
     fun resetToDefaults() {
         prefs.edit()
             .remove(KEY_LANGUAGE)
+            .remove(KEY_UNITS)
+            .remove(KEY_UNITS_LEGACY)
             .putString(KEY_THEME, "system")
             .apply()
         applyToDelegate()
@@ -83,6 +116,8 @@ class AppPreferences(context: Context) {
         private const val PREFS_NAME = "device_info_prefs"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_LANGUAGE = "language_tag"
+        private const val KEY_UNITS = "unit_mode"
+        private const val KEY_UNITS_LEGACY = "vehicle_units"
 
         /** Car [androidx.car.app.CarContext] may ignore [AppCompatDelegate] app locales. */
         fun localizedContext(base: Context): Context {

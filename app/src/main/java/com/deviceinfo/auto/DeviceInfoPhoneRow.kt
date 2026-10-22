@@ -1,6 +1,7 @@
 package com.deviceinfo.auto
 
 import android.content.Context
+import android.hardware.SensorManager
 
 /** Title, value, and icon for one phone list row — shared by initial bind and live updates. */
 data class PhoneRowUi(
@@ -13,25 +14,57 @@ object DeviceInfoPhoneRow {
 
     fun shouldRefresh(
         key: String,
-        updateBattery: Boolean,
+        updateBatteryBroadcast: Boolean,
+        updateBatteryPoll: Boolean,
         updateMemory: Boolean,
         updateProcessor: Boolean,
         updateNetwork: Boolean,
+        updateNetworkPoll: Boolean,
         updateDisplay: Boolean,
-    ): Boolean = when (key) {
+        updateVehicle: Boolean,
+        updateLocation: Boolean,
+        updateDisplayUnits: Boolean,
+    ): Boolean {
+        if (updateDisplayUnits) {
+            return when (key) {
+                DeviceInfoUiShared.Row.TEMPERATURE,
+                DeviceInfoUiShared.Row.HW_THERMAL,
+                DeviceInfoUiShared.Row.SENSOR_AMBIENT_TEMPERATURE,
+                DeviceInfoUiShared.Row.VEHICLE_SPEED,
+                DeviceInfoUiShared.Row.VEHICLE_SPEED_RAW,
+                DeviceInfoUiShared.Row.VEHICLE_RANGE,
+                DeviceInfoUiShared.Row.VEHICLE_ODOMETER,
+                DeviceInfoUiShared.Row.LOCATION_NETWORK_SPEED,
+                DeviceInfoUiShared.Row.LOCATION_NETWORK_ALTITUDE,
+                DeviceInfoUiShared.Row.LOCATION_NETWORK_ACCURACY,
+                DeviceInfoUiShared.Row.LOCATION_GPS_SPEED,
+                DeviceInfoUiShared.Row.LOCATION_GPS_ALTITUDE,
+                DeviceInfoUiShared.Row.LOCATION_GPS_ACCURACY,
+                DeviceInfoUiShared.Row.LOCATION_GPS_SPEED_ACCURACY,
+                -> true
+                else -> false
+            }
+        }
+        return when (key) {
         DeviceInfoUiShared.Row.LEVEL,
         DeviceInfoUiShared.Row.PLUGGED,
         DeviceInfoUiShared.Row.HEALTH,
         DeviceInfoUiShared.Row.TECHNOLOGY,
         DeviceInfoUiShared.Row.TEMPERATURE,
+        DeviceInfoUiShared.Row.CHARGE_COUNTER,
+        -> updateBatteryBroadcast
+
         DeviceInfoUiShared.Row.VOLTAGE,
         DeviceInfoUiShared.Row.CURRENT,
         DeviceInfoUiShared.Row.POWER,
-        DeviceInfoUiShared.Row.CHARGE_COUNTER,
+        DeviceInfoUiShared.Row.CHARGE_TIME_REMAINING,
+        -> updateBatteryPoll
+
         DeviceInfoUiShared.Row.CYCLE_COUNT,
         DeviceInfoUiShared.Row.BATTERY_DESIGN_CAPACITY,
-        DeviceInfoUiShared.Row.CHARGE_TIME_REMAINING,
-        -> updateBattery
+        DeviceInfoUiShared.Row.BATTERY_CHARGE_FULL,
+        DeviceInfoUiShared.Row.BATTERY_CHARGE_FULL_SOURCE,
+        -> false
 
         DeviceInfoUiShared.Row.STORAGE,
         DeviceInfoUiShared.Row.RAM,
@@ -45,12 +78,26 @@ object DeviceInfoPhoneRow {
         DeviceInfoUiShared.Row.INTERNET_VALIDATED,
         DeviceInfoUiShared.Row.CAPTIVE_PORTAL,
         DeviceInfoUiShared.Row.MULTI_NETWORK,
+        DeviceInfoUiShared.Row.ACTIVE_BANDWIDTH,
+        DeviceInfoUiShared.Row.WIFI,
         DeviceInfoUiShared.Row.WIFI_BANDS,
+        -> updateNetwork
+
+        DeviceInfoUiShared.Row.WIFI_FREQUENCY,
+        DeviceInfoUiShared.Row.WIFI_STANDARD,
         DeviceInfoUiShared.Row.WIFI_LINK_SPEED,
         DeviceInfoUiShared.Row.WIFI_SIGNAL,
-        DeviceInfoUiShared.Row.BLUETOOTH,
-        DeviceInfoUiShared.Row.CELLULAR,
+        DeviceInfoUiShared.Row.WIFI_BANDWIDTH,
         DeviceInfoUiShared.Row.CELLULAR_SIGNAL,
+        DeviceInfoUiShared.Row.CELLULAR_BANDWIDTH,
+        DeviceInfoUiShared.Row.CELLULAR,
+        DeviceInfoUiShared.Row.CELLULAR_OPERATOR,
+        -> updateNetworkPoll
+
+        DeviceInfoUiShared.Row.BLUETOOTH,
+        DeviceInfoUiShared.Row.CAST,
+        DeviceInfoUiShared.Row.AIRPLANE_MODE,
+        DeviceInfoUiShared.Row.SIM_PHONE_PERMISSION,
         DeviceInfoUiShared.Row.CARRIER,
         DeviceInfoUiShared.Row.SIM_STATE,
         DeviceInfoUiShared.Row.SIM_COUNTRY,
@@ -58,7 +105,6 @@ object DeviceInfoPhoneRow {
         DeviceInfoUiShared.Row.VPN,
         DeviceInfoUiShared.Row.METERED,
         DeviceInfoUiShared.Row.ROAMING,
-        DeviceInfoUiShared.Row.BANDWIDTH,
         -> updateNetwork
 
         DeviceInfoUiShared.Row.RESOLUTION,
@@ -70,7 +116,58 @@ object DeviceInfoPhoneRow {
         DeviceInfoUiShared.Row.DISPLAY_ROTATION,
         -> updateDisplay
 
+        DeviceInfoUiShared.Row.VEHICLE_CONNECTION,
+        DeviceInfoUiShared.Row.VEHICLE_IDENTITY,
+        DeviceInfoUiShared.Row.VEHICLE_MAKE,
+        DeviceInfoUiShared.Row.VEHICLE_MODEL,
+        DeviceInfoUiShared.Row.VEHICLE_YEAR,
+        DeviceInfoUiShared.Row.VEHICLE_SPEED,
+        DeviceInfoUiShared.Row.VEHICLE_SPEED_RAW,
+        DeviceInfoUiShared.Row.VEHICLE_FUEL_LEVEL,
+        DeviceInfoUiShared.Row.VEHICLE_EV_BATTERY,
+        DeviceInfoUiShared.Row.VEHICLE_RANGE,
+        DeviceInfoUiShared.Row.VEHICLE_ODOMETER,
+        DeviceInfoUiShared.Row.VEHICLE_FUEL_TYPES,
+        DeviceInfoUiShared.Row.VEHICLE_EV_CONNECTORS,
+        DeviceInfoUiShared.Row.VEHICLE_DATA_STATUS,
+        -> updateVehicle
+
+        DeviceInfoUiShared.Row.LOCATION_GPS,
+        DeviceInfoUiShared.Row.LOCATION_NETWORK,
+        DeviceInfoUiShared.Row.LOCATION_GOOGLE_STATUS,
+        DeviceInfoUiShared.Row.LOCATION_GOOGLE_COORDINATES,
+        DeviceInfoUiShared.Row.LOCATION_GOOGLE_ACCURACY,
+        DeviceInfoUiShared.Row.LOCATION_GOOGLE_ALTITUDE,
+        DeviceInfoUiShared.Row.LOCATION_GOOGLE_SPEED,
+        DeviceInfoUiShared.Row.LOCATION_GOOGLE_BEARING,
+        DeviceInfoUiShared.Row.LOCATION_GOOGLE_FIX_AGE,
+        DeviceInfoUiShared.Row.LOCATION_DEVICE_HEADING,
+        DeviceInfoUiShared.Row.LOCATION_DEVICE_HEADING_ACCURACY,
+        DeviceInfoUiShared.Row.LOCATION_DEVICE_HEADING_SOURCE,
+        DeviceInfoUiShared.Row.LOCATION_NETWORK_SPEED,
+        DeviceInfoUiShared.Row.LOCATION_NETWORK_BEARING,
+        DeviceInfoUiShared.Row.LOCATION_NETWORK_ACCURACY,
+        DeviceInfoUiShared.Row.LOCATION_NETWORK_COORDINATES,
+        DeviceInfoUiShared.Row.LOCATION_NETWORK_ALTITUDE,
+        DeviceInfoUiShared.Row.LOCATION_NETWORK_PROVIDER,
+        DeviceInfoUiShared.Row.LOCATION_NETWORK_FIX_AGE,
+        DeviceInfoUiShared.Row.LOCATION_GPS_SPEED,
+        DeviceInfoUiShared.Row.LOCATION_GPS_BEARING,
+        DeviceInfoUiShared.Row.LOCATION_GPS_ACCURACY,
+        DeviceInfoUiShared.Row.LOCATION_GPS_COORDINATES,
+        DeviceInfoUiShared.Row.LOCATION_GPS_ALTITUDE,
+        DeviceInfoUiShared.Row.LOCATION_GPS_PROVIDER,
+        DeviceInfoUiShared.Row.LOCATION_GPS_FIX_AGE,
+        DeviceInfoUiShared.Row.LOCATION_GNSS_SATELLITES,
+        DeviceInfoUiShared.Row.LOCATION_GNSS_FREQUENCY_BANDS,
+        DeviceInfoUiShared.Row.LOCATION_GPS_VERTICAL_ACCURACY,
+        DeviceInfoUiShared.Row.LOCATION_GPS_SPEED_ACCURACY,
+        DeviceInfoUiShared.Row.LOCATION_GPS_BEARING_ACCURACY,
+        DeviceInfoUiShared.Row.LOCATION_GPS_MOCK,
+        -> updateLocation
+
         else -> updateMemory && DeviceInfoUiShared.Row.isStorageVolumeRowKey(key)
+        }
     }
 
     fun uiState(
@@ -105,7 +202,7 @@ object DeviceInfoPhoneRow {
             )
             DeviceInfoUiShared.Row.TEMPERATURE -> PhoneRowUi(
                 title(key),
-                DeviceInfoUiShared.temperatureText(info.batteryTemperatureCelsius),
+                DeviceInfoUiShared.temperatureText(context, info.batteryTemperatureCelsius),
                 DeviceInfoUiShared.temperatureIconRes(info.batteryTemperatureCelsius),
             )
             DeviceInfoUiShared.Row.VOLTAGE -> PhoneRowUi(
@@ -137,6 +234,24 @@ object DeviceInfoPhoneRow {
                 title(key),
                 DeviceInfoUiShared.batteryDesignCapacityText(context, info.batteryDesignCapacityMicroAh),
                 R.drawable.ic_row_battery_full,
+            )
+            DeviceInfoUiShared.Row.BATTERY_CHARGE_FULL -> PhoneRowUi(
+                title(key),
+                DeviceInfoUiShared.batteryDesignCapacityText(context, info.batteryChargeFullMicroAh),
+                R.drawable.ic_row_cycle_count,
+            )
+            DeviceInfoUiShared.Row.BATTERY_CHARGE_FULL_SOURCE -> PhoneRowUi(
+                title(key),
+                when (info.batteryChargeFullSource) {
+                    BatteryCapacitySource.BATTERY_MANAGER ->
+                        context.getString(R.string.battery_capacity_source_battery_manager)
+                    BatteryCapacitySource.BATTERY_BROADCAST ->
+                        context.getString(R.string.battery_capacity_source_broadcast)
+                    BatteryCapacitySource.SYSFS ->
+                        context.getString(R.string.battery_capacity_source_sysfs)
+                    null -> fallbackNotAvailable
+                },
+                R.drawable.ic_row_terminal,
             )
             DeviceInfoUiShared.Row.CHARGE_TIME_REMAINING -> PhoneRowUi(
                 title(key),
@@ -206,6 +321,35 @@ object DeviceInfoPhoneRow {
             DeviceInfoUiShared.Row.MULTI_NETWORK -> PhoneRowUi(
                 title(key),
                 DeviceInfoUiShared.multiNetworkSummaryDisplay(context, info.multiNetworkSummary),
+                R.drawable.ic_row_multi_network,
+            )
+            DeviceInfoUiShared.Row.ACTIVE_BANDWIDTH -> PhoneRowUi(
+                title(key),
+                DeviceInfoUiShared.bandwidthDisplay(
+                    context,
+                    info.downstreamKbps,
+                    info.upstreamKbps,
+                    DeviceInfoUiShared.DisplaySurface.PHONE,
+                ),
+                R.drawable.ic_row_speed,
+            )
+            DeviceInfoUiShared.Row.WIFI -> PhoneRowUi(
+                title(key),
+                DeviceInfoUiShared.wifiState(
+                    context,
+                    info.wifiOn,
+                    permissionRequired = info.wifiNetworkRowsVisible && info.wifiOn == null,
+                ),
+                R.drawable.ic_row_wifi,
+            )
+            DeviceInfoUiShared.Row.WIFI_FREQUENCY -> PhoneRowUi(
+                title(key),
+                info.wifiFrequencySummary ?: fallbackNotAvailable,
+                R.drawable.ic_row_wifi,
+            )
+            DeviceInfoUiShared.Row.WIFI_STANDARD -> PhoneRowUi(
+                title(key),
+                info.wifiStandardSummary ?: fallbackNotAvailable,
                 R.drawable.ic_row_wifi,
             )
             DeviceInfoUiShared.Row.WIFI_BANDS -> PhoneRowUi(
@@ -223,15 +367,40 @@ object DeviceInfoPhoneRow {
                 DeviceInfoUiShared.networkReadingOrNotAvailable(context, info.wifiSignalSummary),
                 R.drawable.ic_row_wifi,
             )
+            DeviceInfoUiShared.Row.WIFI_BANDWIDTH -> PhoneRowUi(
+                title(key),
+                DeviceInfoUiShared.bandwidthDisplay(
+                    context,
+                    info.wifiDownstreamKbps,
+                    info.wifiUpstreamKbps,
+                    DeviceInfoUiShared.DisplaySurface.PHONE,
+                ),
+                R.drawable.ic_row_speed,
+            )
             DeviceInfoUiShared.Row.CELLULAR -> PhoneRowUi(
                 title(key),
                 DeviceInfoUiShared.cellularNetworkLabelDisplay(context, info.cellularType),
+                R.drawable.ic_row_cell_tower,
+            )
+            DeviceInfoUiShared.Row.CELLULAR_OPERATOR -> PhoneRowUi(
+                title(key),
+                info.cellularOperatorSummary ?: fallbackNotAvailable,
                 R.drawable.ic_row_cell_tower,
             )
             DeviceInfoUiShared.Row.CELLULAR_SIGNAL -> PhoneRowUi(
                 title(key),
                 info.cellularSignalSummary,
                 R.drawable.ic_row_cell_tower,
+            )
+            DeviceInfoUiShared.Row.CELLULAR_BANDWIDTH -> PhoneRowUi(
+                title(key),
+                DeviceInfoUiShared.bandwidthDisplay(
+                    context,
+                    info.cellularDownstreamKbps,
+                    info.cellularUpstreamKbps,
+                    DeviceInfoUiShared.DisplaySurface.PHONE,
+                ),
+                R.drawable.ic_row_speed,
             )
             DeviceInfoUiShared.Row.CARRIER -> PhoneRowUi(
                 title(key),
@@ -253,10 +422,45 @@ object DeviceInfoPhoneRow {
                 DeviceInfoUiShared.simTypeSummaryDisplay(context, info.simTypeSummary),
                 R.drawable.ic_row_sim_card,
             )
+            DeviceInfoUiShared.Row.SIM_PHONE_PERMISSION -> PhoneRowUi(
+                title(key),
+                context.getString(R.string.value_permission_required),
+                R.drawable.ic_row_sim_card,
+            )
             DeviceInfoUiShared.Row.BLUETOOTH -> PhoneRowUi(
                 title(key),
-                DeviceInfoUiShared.bluetoothState(context, info.bluetoothOn),
+                DeviceInfoUiShared.bluetoothState(
+                    context,
+                    info.bluetoothOn,
+                    permissionRequired = info.bluetoothCapable && info.bluetoothOn == null,
+                ),
                 R.drawable.ic_row_bluetooth,
+            )
+            DeviceInfoUiShared.Row.BLUETOOTH_TYPE -> PhoneRowUi(
+                title(key),
+                info.bluetoothTypeSummary,
+                R.drawable.ic_row_bluetooth,
+            )
+            DeviceInfoUiShared.Row.CAST -> PhoneRowUi(
+                title(key),
+                info.castSummary,
+                R.drawable.ic_row_cast,
+            )
+            DeviceInfoUiShared.Row.WIFI_DIRECT -> PhoneRowUi(
+                title(key),
+                info.wifiDirectSummary,
+                R.drawable.ic_row_wifi_direct,
+            )
+            DeviceInfoUiShared.Row.UWB -> PhoneRowUi(
+                title(key),
+                info.uwbSummary,
+                R.drawable.ic_row_uwb,
+            )
+            DeviceInfoUiShared.Row.AIRPLANE_MODE -> PhoneRowUi(
+                title(key),
+                info.airplaneModeOn?.let { DeviceInfoUiShared.onOff(context, it) }
+                    ?: fallbackNotAvailable,
+                R.drawable.ic_row_airplane_mode,
             )
             DeviceInfoUiShared.Row.VPN -> PhoneRowUi(
                 title(key),
@@ -272,16 +476,6 @@ object DeviceInfoPhoneRow {
                 title(key),
                 DeviceInfoUiShared.yesNo(context, info.isRoaming),
                 R.drawable.ic_row_roaming,
-            )
-            DeviceInfoUiShared.Row.BANDWIDTH -> PhoneRowUi(
-                title(key),
-                DeviceInfoUiShared.bandwidthDisplay(
-                    context,
-                    info.downstreamKbps,
-                    info.upstreamKbps,
-                    DeviceInfoUiShared.DisplaySurface.PHONE,
-                ),
-                R.drawable.ic_row_speed,
             )
             DeviceInfoUiShared.Row.DEVICE_NAME -> PhoneRowUi(title(key), info.deviceName, R.drawable.ic_row_model)
             DeviceInfoUiShared.Row.MODEL -> PhoneRowUi(
@@ -335,7 +529,7 @@ object DeviceInfoPhoneRow {
                 DeviceInfoUiShared.sysfsReadingOrNotAvailable(context, info.cpuCurrentFreq),
                 R.drawable.ic_row_speed,
             )
-            DeviceInfoUiShared.Row.CPU_ABI -> PhoneRowUi(title(key), info.cpuAbi, R.drawable.ic_row_architecture)
+            DeviceInfoUiShared.Row.CPU_ABI -> PhoneRowUi(title(key), info.cpuAbi, R.drawable.ic_row_memory)
             DeviceInfoUiShared.Row.GPU -> PhoneRowUi(
                 title(key),
                 DeviceInfoUiShared.sysfsReadingOrNotAvailable(context, info.gpuRenderer),
@@ -355,8 +549,8 @@ object DeviceInfoPhoneRow {
                 ),
                 R.drawable.ic_row_camera,
             )
-            DeviceInfoUiShared.Row.HW_NFC -> PhoneRowUi(title(key), info.nfcSummary, R.drawable.ic_row_nfc)
-            DeviceInfoUiShared.Row.HW_USB -> PhoneRowUi(
+            DeviceInfoUiShared.Row.NFC -> PhoneRowUi(title(key), info.nfcSummary, R.drawable.ic_row_nfc)
+            DeviceInfoUiShared.Row.USB -> PhoneRowUi(
                 title(key),
                 DeviceInfoUiShared.listSummaryForDisplay(
                     context,
@@ -390,7 +584,309 @@ object DeviceInfoPhoneRow {
                     info.thermalSummary,
                     DeviceInfoUiShared.DisplaySurface.PHONE,
                 ),
-                DeviceInfoUiShared.thermalIconRes(info.thermalSummary),
+                R.drawable.ic_row_memory,
+            )
+            DeviceInfoUiShared.Row.VEHICLE_CONNECTION -> PhoneRowUi(
+                title(key),
+                info.vehicleTab.connectionSummary,
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_IDENTITY -> PhoneRowUi(
+                title(key),
+                listOf(
+                    info.vehicleTab.make,
+                    info.vehicleTab.model,
+                    info.vehicleTab.year,
+                ).filter {
+                    it.isNotBlank() &&
+                        it != "—" &&
+                        it != fallbackNotAvailable.toString()
+                }
+                    .joinToString(DeviceInfoUiShared.BULLET_SEP)
+                    .ifBlank { fallbackNotAvailable.toString() },
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_MAKE -> PhoneRowUi(
+                title(key),
+                info.vehicleTab.make,
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_MODEL -> PhoneRowUi(
+                title(key),
+                info.vehicleTab.model,
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_YEAR -> PhoneRowUi(
+                title(key),
+                info.vehicleTab.year,
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_SPEED -> PhoneRowUi(
+                title(key),
+                info.vehicleTab.speedDisplay,
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_SPEED_RAW -> PhoneRowUi(
+                title(key),
+                info.vehicleTab.speedRaw,
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_FUEL_LEVEL -> PhoneRowUi(
+                title(key),
+                VehicleInfoFormats.fuelDisplay(
+                    context,
+                    info.vehicleTab.fuelLevel,
+                    info.vehicleTab.fuelTypes,
+                ).phoneText().ifBlank { fallbackNotAvailable.toString() },
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_EV_BATTERY -> PhoneRowUi(
+                title(key),
+                VehicleInfoFormats.evBatteryDisplay(
+                    context,
+                    info.vehicleTab.evBattery,
+                    info.vehicleTab.evConnectors,
+                ).phoneText().ifBlank { fallbackNotAvailable.toString() },
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_RANGE -> PhoneRowUi(
+                title(key),
+                info.vehicleTab.rangeRemaining,
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_ODOMETER -> PhoneRowUi(
+                title(key),
+                info.vehicleTab.odometer,
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_FUEL_TYPES -> PhoneRowUi(
+                title(key),
+                DeviceInfoUiShared.listSummaryForDisplay(
+                    context,
+                    info.vehicleTab.fuelTypes,
+                    DeviceInfoUiShared.DisplaySurface.PHONE,
+                ),
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_EV_CONNECTORS -> PhoneRowUi(
+                title(key),
+                DeviceInfoUiShared.listSummaryForDisplay(
+                    context,
+                    info.vehicleTab.evConnectors,
+                    DeviceInfoUiShared.DisplaySurface.PHONE,
+                ),
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.VEHICLE_DATA_STATUS -> PhoneRowUi(
+                title(key),
+                info.vehicleTab.dataStatus,
+                DeviceInfoUiShared.vehicleRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_GPS -> PhoneRowUi(
+                title(key),
+                locationProviderValue(context, info.locationTab.gpsEnabled, fallbackNotAvailable),
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_GPS_COORDINATES -> locationCoordinatesUi(
+                context,
+                key,
+                info.locationTab.gpsFix,
+                fallbackNotAvailable,
+            )
+            DeviceInfoUiShared.Row.LOCATION_NETWORK -> PhoneRowUi(
+                title(key),
+                locationProviderValue(context, info.locationTab.networkEnabled, fallbackNotAvailable),
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_COORDINATES -> locationCoordinatesUi(
+                context,
+                key,
+                info.locationTab.networkFix,
+                fallbackNotAvailable,
+            )
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_STATUS -> PhoneRowUi(
+                title(key),
+                when (info.locationTab.googlePlayServicesLocationStatus) {
+                    GooglePlayServicesLocationStatus.WAITING ->
+                        context.getString(R.string.location_google_status_waiting)
+                    GooglePlayServicesLocationStatus.AVAILABLE ->
+                        context.getString(R.string.location_google_status_available)
+                    GooglePlayServicesLocationStatus.UNAVAILABLE ->
+                        context.getString(R.string.location_google_status_unavailable)
+                    GooglePlayServicesLocationStatus.ERROR ->
+                        context.getString(R.string.location_google_status_error)
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_COORDINATES -> PhoneRowUi(
+                title(key),
+                locationFixValue(
+                    context,
+                    info.locationTab.googlePlayServicesFix,
+                    true,
+                    fallbackNotAvailable,
+                ) {
+                    LocationInfoFormats.coordinatesDisplay(
+                        context,
+                        info.locationTab.googlePlayServicesFix.latitude,
+                        info.locationTab.googlePlayServicesFix.longitude,
+                    )
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_ACCURACY,
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_ALTITUDE,
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_SPEED,
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_BEARING,
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_FIX_AGE,
+            -> locationFixUi(
+                context,
+                key,
+                info.locationTab.googlePlayServicesFix,
+                fallbackNotAvailable,
+            )
+            DeviceInfoUiShared.Row.LOCATION_DEVICE_HEADING -> PhoneRowUi(
+                title(key),
+                if (info.locationTab.hasDeviceHeading) {
+                    LocationInfoFormats.bearingDisplay(
+                        context,
+                        info.locationTab.deviceHeadingDegrees,
+                    )
+                } else {
+                    fallbackNotAvailable
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_DEVICE_HEADING_ACCURACY -> PhoneRowUi(
+                title(key),
+                headingAccuracyLabel(
+                    context,
+                    info.locationTab.deviceHeadingAccuracy,
+                    fallbackNotAvailable,
+                ),
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_DEVICE_HEADING_SOURCE -> PhoneRowUi(
+                title(key),
+                when (info.locationTab.deviceHeadingSource) {
+                    DeviceHeadingSource.ROTATION_VECTOR ->
+                        context.getString(R.string.location_heading_source_rotation_vector)
+                    DeviceHeadingSource.ACCELEROMETER_MAGNETIC_FIELD ->
+                        context.getString(R.string.location_heading_source_fallback)
+                    null -> fallbackNotAvailable
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_SPEED ->
+                locationFixUi(context, key, info.locationTab.networkFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_BEARING ->
+                locationFixUi(context, key, info.locationTab.networkFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_ACCURACY ->
+                locationFixUi(context, key, info.locationTab.networkFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_ALTITUDE ->
+                locationFixUi(context, key, info.locationTab.networkFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_PROVIDER ->
+                locationFixUi(context, key, info.locationTab.networkFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_FIX_AGE ->
+                locationFixUi(context, key, info.locationTab.networkFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_GPS_SPEED ->
+                locationFixUi(context, key, info.locationTab.gpsFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_GPS_BEARING ->
+                locationFixUi(context, key, info.locationTab.gpsFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_GPS_ACCURACY ->
+                locationFixUi(context, key, info.locationTab.gpsFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_GPS_ALTITUDE ->
+                locationFixUi(context, key, info.locationTab.gpsFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_GPS_PROVIDER ->
+                locationFixUi(context, key, info.locationTab.gpsFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_GPS_FIX_AGE ->
+                locationFixUi(context, key, info.locationTab.gpsFix, fallbackNotAvailable)
+            DeviceInfoUiShared.Row.LOCATION_GPS_VERTICAL_ACCURACY -> PhoneRowUi(
+                title(key),
+                locationFixValue(
+                    context,
+                    info.locationTab.gpsFix,
+                    info.locationTab.gpsFix.hasVerticalAccuracy,
+                    fallbackNotAvailable,
+                ) {
+                    LocationInfoFormats.accuracyDisplay(
+                        context,
+                        info.locationTab.gpsFix.verticalAccuracyMeters,
+                    )
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_GPS_SPEED_ACCURACY -> PhoneRowUi(
+                title(key),
+                locationFixValue(
+                    context,
+                    info.locationTab.gpsFix,
+                    info.locationTab.gpsFix.hasSpeedAccuracy,
+                    fallbackNotAvailable,
+                ) {
+                    context.getString(
+                        R.string.location_speed_accuracy_format,
+                        MeasurementUnits.speed(
+                            context,
+                            info.locationTab.gpsFix.speedAccuracyMps,
+                        ),
+                    )
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_GPS_BEARING_ACCURACY -> PhoneRowUi(
+                title(key),
+                locationFixValue(
+                    context,
+                    info.locationTab.gpsFix,
+                    info.locationTab.gpsFix.hasBearingAccuracy,
+                    fallbackNotAvailable,
+                ) {
+                    context.getString(
+                        R.string.location_bearing_accuracy_format,
+                        info.locationTab.gpsFix.bearingAccuracyDegrees,
+                    )
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_GPS_MOCK -> PhoneRowUi(
+                title(key),
+                locationFixValue(
+                    context,
+                    info.locationTab.gpsFix,
+                    true,
+                    fallbackNotAvailable,
+                ) {
+                    DeviceInfoUiShared.yesNo(context, info.locationTab.gpsFix.isMock)
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_GNSS_SATELLITES -> PhoneRowUi(
+                title(key),
+                gnssValue(context, fallbackNotAvailable) {
+                    val used = info.locationTab.gnss.satellitesUsedInFix
+                    val visible = info.locationTab.gnss.satellitesVisible
+                    if (used == null || visible == null) {
+                        fallbackNotAvailable
+                    } else {
+                        context.getString(
+                            R.string.location_gnss_satellites_format,
+                            used,
+                            visible,
+                        )
+                    }
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
+            )
+            DeviceInfoUiShared.Row.LOCATION_GNSS_FREQUENCY_BANDS -> PhoneRowUi(
+                title(key),
+                gnssValue(context, fallbackNotAvailable) {
+                    info.locationTab.gnss.frequencyBands
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(DeviceInfoUiShared::joinList)
+                        ?: fallbackNotAvailable
+                },
+                DeviceInfoUiShared.locationRowIconRes(key),
             )
             DeviceInfoUiShared.Row.SENSOR_ACCELEROMETER,
             DeviceInfoUiShared.Row.SENSOR_GYROSCOPE,
@@ -412,5 +908,116 @@ object DeviceInfoPhoneRow {
                 }
             }
         }
+    }
+
+    private fun locationProviderValue(
+        context: Context,
+        enabled: Boolean?,
+        fallbackNotAvailable: CharSequence,
+    ): CharSequence = when (enabled) {
+        true -> DeviceInfoUiShared.onOff(context, true)
+        false -> DeviceInfoUiShared.onOff(context, false)
+        null -> fallbackNotAvailable
+    }
+
+    private fun headingAccuracyLabel(
+        context: Context,
+        accuracy: Int?,
+        fallbackNotAvailable: CharSequence,
+    ): CharSequence = when (accuracy) {
+        SensorManager.SENSOR_STATUS_ACCURACY_HIGH ->
+            context.getString(R.string.location_heading_accuracy_high)
+        SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM ->
+            context.getString(R.string.location_heading_accuracy_medium)
+        SensorManager.SENSOR_STATUS_ACCURACY_LOW ->
+            context.getString(R.string.location_heading_accuracy_low)
+        SensorManager.SENSOR_STATUS_UNRELIABLE ->
+            context.getString(R.string.location_heading_accuracy_unreliable)
+        else -> fallbackNotAvailable
+    }
+
+    private fun gnssValue(
+        context: Context,
+        fallbackNotAvailable: CharSequence,
+        display: () -> CharSequence,
+    ): CharSequence {
+        if (!SensitivePermissions.hasFineLocationPermission(context)) {
+            return context.getString(R.string.value_permission_required)
+        }
+        return display().takeIf { it.isNotEmpty() } ?: fallbackNotAvailable
+    }
+
+    private fun locationFixUi(
+        context: Context,
+        key: String,
+        fix: LocationFixSnapshot,
+        fallbackNotAvailable: CharSequence,
+    ): PhoneRowUi {
+        val value = when (key) {
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_SPEED,
+            DeviceInfoUiShared.Row.LOCATION_GPS_SPEED,
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_SPEED,
+            -> locationFixValue(context, fix, fix.hasSpeed, fallbackNotAvailable) {
+                MeasurementUnits.speed(context, fix.speedMps)
+            }
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_BEARING,
+            DeviceInfoUiShared.Row.LOCATION_GPS_BEARING,
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_BEARING,
+            -> locationFixValue(context, fix, fix.hasBearing, fallbackNotAvailable) {
+                LocationInfoFormats.bearingDisplay(context, fix.bearingDegrees)
+            }
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_ACCURACY,
+            DeviceInfoUiShared.Row.LOCATION_GPS_ACCURACY,
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_ACCURACY,
+            -> locationFixValue(context, fix, fix.hasAccuracy, fallbackNotAvailable) {
+                LocationInfoFormats.accuracyDisplay(context, fix.accuracyMeters)
+            }
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_ALTITUDE,
+            DeviceInfoUiShared.Row.LOCATION_GPS_ALTITUDE,
+            DeviceInfoUiShared.Row.LOCATION_GOOGLE_ALTITUDE,
+            -> locationFixValue(context, fix, fix.hasAltitude, fallbackNotAvailable) {
+                MeasurementUnits.altitude(context, fix.altitudeMeters)
+            }
+            DeviceInfoUiShared.Row.LOCATION_NETWORK_PROVIDER,
+            DeviceInfoUiShared.Row.LOCATION_GPS_PROVIDER,
+            -> locationFixValue(context, fix, true, fallbackNotAvailable) {
+                LocationInfoFormats.providerLabel(context, fix.provider)
+            }
+            else -> locationFixValue(context, fix, true, fallbackNotAvailable) {
+                LocationInfoFormats.fixAgeDisplay(context, fix.fixAgeMs)
+            }
+        }
+        return PhoneRowUi(
+            DeviceInfoUiShared.rowTitle(context, key),
+            value,
+            DeviceInfoUiShared.locationRowIconRes(key),
+        )
+    }
+
+    private fun locationCoordinatesUi(
+        context: Context,
+        key: String,
+        fix: LocationFixSnapshot,
+        fallbackNotAvailable: CharSequence,
+    ): PhoneRowUi = PhoneRowUi(
+        DeviceInfoUiShared.rowTitle(context, key),
+        locationFixValue(context, fix, true, fallbackNotAvailable) {
+            LocationInfoFormats.coordinatesDisplay(context, fix.latitude, fix.longitude)
+        },
+        DeviceInfoUiShared.locationRowIconRes(key),
+    )
+
+    private fun locationFixValue(
+        context: Context,
+        fix: LocationFixSnapshot,
+        fieldAvailable: Boolean,
+        fallbackNotAvailable: CharSequence,
+        display: () -> CharSequence,
+    ): CharSequence {
+        if (!SensitivePermissions.hasLocationPermission(context)) {
+            return context.getString(R.string.value_permission_required)
+        }
+        if (!fix.hasFix || !fieldAvailable) return fallbackNotAvailable
+        return display()
     }
 }

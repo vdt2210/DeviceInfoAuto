@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?android:attr/colorBackground">
+    android:background="?attr/colorSurface">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
@@ -44,16 +44,14 @@
                     android:layout_height="wrap_content"
                     android:paddingBottom="4dp"
                     android:text="@string/settings_section_language"
-                    android:textColor="?attr/colorAccent"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
+                    android:textAppearance="@style/TextAppearance.DeviceInfo.SectionTitle" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingBottom="8dp"
                     android:text="@string/settings_language_hint"
-                    android:textColor="?android:attr/textColorSecondary"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     android:textSize="14sp" />
 
                 <Spinner
@@ -81,16 +79,14 @@
                     android:layout_height="wrap_content"
                     android:paddingBottom="4dp"
                     android:text="@string/settings_section_appearance"
-                    android:textColor="?attr/colorAccent"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
+                    android:textAppearance="@style/TextAppearance.DeviceInfo.SectionTitle" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingBottom="8dp"
                     android:text="@string/settings_appearance_hint"
-                    android:textColor="?android:attr/textColorSecondary"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     android:textSize="14sp" />
 
                 <RadioGroup
@@ -110,7 +106,7 @@
                         android:saveEnabled="false"
                         android:text="@string/theme_system"
                         android:textSize="17sp"
-                        app:buttonTint="?attr/colorAccent" />
+                        app:buttonTint="?attr/colorPrimary" />
 
                     <RadioButton
                         android:id="@+id/radio_theme_light"
@@ -121,7 +117,7 @@
                         android:saveEnabled="false"
                         android:text="@string/theme_light"
                         android:textSize="17sp"
-                        app:buttonTint="?attr/colorAccent" />
+                        app:buttonTint="?attr/colorPrimary" />
 
                     <RadioButton
                         android:id="@+id/radio_theme_dark"
@@ -132,7 +128,75 @@
                         android:saveEnabled="false"
                         android:text="@string/theme_dark"
                         android:textSize="17sp"
-                        app:buttonTint="?attr/colorAccent" />
+                        app:buttonTint="?attr/colorPrimary" />
+                </RadioGroup>
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/about_panel_bg"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingTop="16dp"
+                android:paddingBottom="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="4dp"
+                    android:text="@string/settings_section_units"
+                    android:textAppearance="@style/TextAppearance.DeviceInfo.SectionTitle" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="8dp"
+                    android:text="@string/settings_units_hint"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="14sp" />
+
+                <RadioGroup
+                    android:id="@+id/radio_units"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="vertical"
+                    android:saveEnabled="false">
+
+                    <RadioButton
+                        android:id="@+id/radio_units_auto"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="56dp"
+                        android:paddingVertical="10dp"
+                        android:saveEnabled="false"
+                        android:text="@string/units_auto"
+                        android:textSize="17sp"
+                        app:buttonTint="?attr/colorPrimary" />
+
+                    <RadioButton
+                        android:id="@+id/radio_units_metric"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="56dp"
+                        android:paddingVertical="10dp"
+                        android:saveEnabled="false"
+                        android:text="@string/units_metric"
+                        android:textSize="17sp"
+                        app:buttonTint="?attr/colorPrimary" />
+
+                    <RadioButton
+                        android:id="@+id/radio_units_imperial"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="56dp"
+                        android:paddingVertical="10dp"
+                        android:saveEnabled="false"
+                        android:text="@string/units_imperial"
+                        android:textSize="17sp"
+                        app:buttonTint="?attr/colorPrimary" />
                 </RadioGroup>
             </LinearLayout>
 
@@ -151,16 +215,14 @@
                     android:layout_height="wrap_content"
                     android:paddingBottom="4dp"
                     android:text="@string/settings_section_permissions"
-                    android:textColor="?attr/colorAccent"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
+                    android:textAppearance="@style/TextAppearance.DeviceInfo.SectionTitle" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingBottom="8dp"
                     android:text="@string/settings_permissions_hint"
-                    android:textColor="?android:attr/textColorSecondary"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     android:textSize="14sp" />
 
                 <TextView
@@ -168,42 +230,22 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingBottom="8dp"
-                    android:textColor="?android:attr/textColorPrimary"
+                    android:textColor="?attr/colorOnSurface"
                     android:textSize="14sp" />
 
-                <Button
+                <com.deviceinfo.auto.DeviceInfoButton
                     android:id="@+id/button_request_permissions"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:minHeight="52dp"
-                    android:paddingHorizontal="16dp"
-                    android:paddingVertical="12dp"
-                    android:text="@string/settings_action_request_permissions"
-                    android:textAllCaps="false"
-                    android:textSize="16sp"
-                    android:background="@drawable/btn_settings_primary"
-                    android:elevation="0dp"
-                    android:stateListAnimator="@null"
-                    android:translationZ="0dp"
-                    android:textColor="?android:attr/textColorPrimaryInverse" />
+                    android:text="@string/settings_action_request_permissions" />
 
-                <Button
+                <com.deviceinfo.auto.DeviceInfoButton
                     android:id="@+id/button_open_app_settings"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:minHeight="52dp"
-                    android:paddingHorizontal="16dp"
-                    android:paddingVertical="12dp"
-                    android:text="@string/settings_action_app_settings"
-                    android:textAllCaps="false"
-                    android:textSize="16sp"
-                    android:background="@drawable/btn_settings_primary"
-                    android:elevation="0dp"
-                    android:stateListAnimator="@null"
-                    android:translationZ="0dp"
-                    android:textColor="?android:attr/textColorPrimaryInverse" />
+                    android:text="@string/settings_action_app_settings" />
 
             </LinearLayout>
 
@@ -222,7 +264,7 @@
                     android:layout_height="wrap_content"
                     android:paddingBottom="4dp"
                     android:text="@string/settings_section_reset"
-                    android:textColor="?attr/colorDestructive"
+                    android:textColor="?attr/colorError"
                     android:textSize="20sp"
                     android:textStyle="bold" />
 
@@ -231,27 +273,18 @@
                     android:layout_height="wrap_content"
                     android:paddingBottom="10dp"
                     android:text="@string/settings_reset_summary"
-                    android:textColor="?android:attr/textColorSecondary"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     android:textSize="14sp" />
 
-                <!-- Add more destructive reset actions below this button (reuse @drawable/btn_settings_danger). -->
+                <!-- Destructive actions use Widget.DeviceInfo.Button.Danger (fixed red). -->
 
-                <Button
+                <com.deviceinfo.auto.DeviceInfoButton
                     android:id="@+id/button_reset_defaults"
+                    style="@style/Widget.DeviceInfo.Button.Danger"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:minHeight="52dp"
-                    android:paddingHorizontal="16dp"
-                    android:paddingVertical="12dp"
-                    android:text="@string/settings_reset_button"
-                    android:textAllCaps="false"
-                    android:textSize="16sp"
-                    android:background="@drawable/btn_settings_danger"
-                    android:elevation="0dp"
-                    android:stateListAnimator="@null"
-                    android:translationZ="0dp"
-                    android:textColor="?attr/colorOnDestructive" />
+                    android:text="@string/settings_reset_button" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

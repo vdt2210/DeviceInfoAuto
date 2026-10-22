@@ -5,5 +5,8 @@ import androidx.car.app.Screen
 import androidx.car.app.Session
 
 class DeviceInfoSession : Session() {
-    override fun onCreateScreen(intent: Intent): Screen = DeviceInfoScreen(carContext)
+    override fun onCreateScreen(intent: Intent): Screen {
+        VehicleInfoCarCollector.attach(carContext)
+        return DeviceInfoScreen(carContext)
+    }
 }

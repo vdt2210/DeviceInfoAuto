@@ -14,7 +14,7 @@ Google usually requires Android Auto apps to be installed via **Google Play**. H
 
 ### Device requirements
 
-- **Android 11 or later** (API 30+)
+- **Android 10 or later** (API 29+)
 
 ### Install on phone
 
@@ -54,14 +54,14 @@ Google usually requires Android Auto apps to be installed via **Google Play**. H
 
 **Android device**
 
-- **Android 11+**
+- **Android 10+**
 - **Android Auto**
 
 **Gradle reference (`app/build.gradle.kts`)**
 
 - `compileSdk` → **36**
-- `minSdk` → **30** (Android 11+)
-- `targetSdk` → **34**
+- `minSdk` → **29** (Android 10+)
+- `targetSdk` → **36**
 - `namespace` → `com.deviceinfo.auto`
 - `applicationId` → `com.vdt2210.deviceinfo`
 
@@ -69,7 +69,7 @@ Google usually requires Android Auto apps to be installed via **Google Play**. H
 
 1. **Clone** this repository to your machine.
 2. Open the project folder in **Android Studio** and **Sync Project with Gradle Files**.
-3. Run the **app** configuration on a **physical device** with **Android 11+** (Android Auto is usually not fully testable on a typical emulator).
+3. Run the **app** configuration on a **physical device** with **Android 10+** (Android Auto is usually not fully testable on a typical emulator).
 4. To try the **car UI**: enable **Android Auto** **Developer mode** and **Unknown sources** on the phone; connect **DHU** on the PC if you use it — [Android Auto — DHU](https://developer.android.com/training/cars/testing/dhu).
 5. To build a **signed release APK**, configure app signing in Android Studio or Gradle, then run `./gradlew assembleRelease`.
 

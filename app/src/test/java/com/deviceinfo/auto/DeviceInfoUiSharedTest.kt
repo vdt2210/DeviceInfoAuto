@@ -16,8 +16,9 @@ class DeviceInfoUiSharedTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     @Test
-    fun temperatureText_formatsCelsius() {
-        assertEquals("25.0 °C", DeviceInfoUiShared.temperatureText(25f))
+    fun temperatureText_formatsCelsiusWhenMetric() {
+        AppPreferences(context).setUnitMode(AppPreferences.UnitMode.METRIC)
+        assertEquals("25.0 °C", DeviceInfoUiShared.temperatureText(context, 25f))
     }
 
     @Test

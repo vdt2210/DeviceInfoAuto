@@ -1,5 +1,6 @@
 package com.deviceinfo.auto
 
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
@@ -16,6 +17,7 @@ import android.telephony.CellSignalStrengthNr
 import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
+import android.telephony.NetworkRegistrationInfo
 import android.util.DisplayMetrics
 import androidx.core.content.ContextCompat
 import android.Manifest
@@ -37,6 +39,7 @@ import android.view.Display
 import android.view.Display.HdrCapabilities
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 import kotlin.math.round
 import android.os.storage.StorageManager
@@ -49,6 +52,12 @@ data class ExternalStorageVolumeInfo(
     val summary: String,
 )
 
+enum class BatteryCapacitySource {
+    BATTERY_MANAGER,
+    BATTERY_BROADCAST,
+    SYSFS,
+}
+
 data class DeviceInfo(
     val batteryLevel: Int,
     val batteryTemperatureCelsius: Float,
@@ -60,8 +69,10 @@ data class DeviceInfo(
     val currentNowMicroA: Long,
     val chargeCounterMicroAh: Long,
     val cycleCount: Int?,
-    /** Design capacity (µAh) from [BatteryManager.BATTERY_PROPERTY_CHARGE_FULL_DESIGN], or null. */
+    /** Design capacity (µAh) from factory rating; not degraded full-charge. */
     val batteryDesignCapacityMicroAh: Long?,
+    /** Current maximum full-charge capacity (µAh) after wear; from [BATTERY_PROPERTY_CHARGE_FULL]. */
+    val batteryChargeFullMicroAh: Long?,
     /** Ms until full when charging; null if unknown. */
     val chargeTimeRemainingMs: Long?,
     val displayResolution: String,
@@ -74,17 +85,31 @@ data class DeviceInfo(
     val displayHdrSummary: String,
     val screenDensityDpi: Int,
     val connectionType: String,
+    val bluetoothCapable: Boolean,
     val bluetoothOn: Boolean?,
+    val bluetoothTypeSummary: String,
+    val castCapable: Boolean,
+    val castSummary: String,
+    val wifiDirectSummary: String,
+    val uwbSummary: String,
+    val airplaneModeOn: Boolean?,
     val cellularType: String,
     val simCarrier: String,
     val simState: String,
     val simCountryIso: String,
     val simTypeSummary: String,
     /**
-     * True when the device has telephony and [READ_PHONE_STATE] is granted so cellular + SIM rows
-     * are shown (values may be placeholders such as "—" when no subscription).
+     * True when the device has telephony hardware (SIM / cellular subsection may appear).
+     */
+    val telephonyCapable: Boolean,
+    /**
+     * True when [READ_PHONE_STATE] is granted so cellular + SIM detail rows are populated.
      */
     val simDetailRowsVisible: Boolean,
+    /** True when a SIM is present in at least one slot (requires [simDetailRowsVisible]). */
+    val simInserted: Boolean,
+    /** `null` when Wi‑Fi state cannot be read (missing [ACCESS_WIFI_STATE]). */
+    val wifiOn: Boolean?,
     val isVpn: Boolean,
     val isMeteredConnection: Boolean,
     val isRoaming: Boolean,
@@ -94,12 +119,21 @@ data class DeviceInfo(
     val wifiSupportedBandsSummary: String,
     val wifiLinkSpeedSummary: String,
     val wifiSignalSummary: String,
+    val wifiDownstreamKbps: Int,
+    val wifiUpstreamKbps: Int,
     val cellularSignalSummary: String,
+    val cellularDownstreamKbps: Int,
+    val cellularUpstreamKbps: Int,
     /** `null` when [ACCESS_NETWORK_STATE] is not granted. */
     val internetValidated: Boolean?,
     val captivePortal: Boolean?,
     val multiNetworkSummary: String,
     val wifiNetworkRowsVisible: Boolean,
+    val wifiConnected: Boolean,
+    val wifiSsidSummary: String?,
+    val wifiFrequencySummary: String?,
+    val wifiStandardSummary: String?,
+    val cellularOperatorSummary: String?,
     val storageSummary: String,
     val externalStorageVolumes: List<ExternalStorageVolumeInfo>,
     val ramSummary: String,
@@ -125,15 +159,34 @@ data class DeviceInfo(
     val audioSummary: String,
     val biometricSummary: String,
     val thermalSummary: String,
+    val batteryChargeFullSource: BatteryCapacitySource? = null,
+    val locationTab: LocationTabSnapshot = LocationTabSnapshot(),
+    val vehicleTab: VehicleTabSnapshot = VehicleTabSnapshot(),
 )
 
 object DeviceInfoProvider {
+    private val networkCapabilitiesByNetwork =
+        ConcurrentHashMap<android.net.Network, NetworkCapabilities>()
+
+    fun onNetworkCapabilitiesChanged(
+        network: android.net.Network,
+        capabilities: NetworkCapabilities,
+    ) {
+        networkCapabilitiesByNetwork[network] = capabilities
+    }
+
+    fun onNetworkLost(network: android.net.Network) {
+        networkCapabilitiesByNetwork.remove(network)
+    }
+
+    fun clearNetworkCapabilities() {
+        networkCapabilitiesByNetwork.clear()
+    }
 
     /** Which slices of [DeviceInfo] to re-read; omitted slices are taken from [cachedSnapshot]. */
     data class GetOptions(
         val includeBattery: Boolean = true,
         val includeNetwork: Boolean = true,
-        val includeCellularSignal: Boolean = false,
         val includeDisplay: Boolean = true,
         val includeMemory: Boolean = true,
         val includeDeviceStatic: Boolean = true,
@@ -144,9 +197,21 @@ object DeviceInfoProvider {
         companion object {
             val Full = GetOptions()
 
-            /** Phone: sticky battery + power saver (broadcast-driven). */
-            val Battery = GetOptions(
-                includeBattery = true,
+            /** Phone: [Intent.ACTION_BATTERY_CHANGED] — level, plugged, health, temp, charge counter. */
+            val BatteryBroadcast = GetOptions(
+                includeBattery = false,
+                includeNetwork = false,
+                includeDisplay = false,
+                includeMemory = false,
+                includeDeviceStatic = false,
+                refreshThermal = false,
+                refreshCpuCurrentFreq = false,
+                refreshBatteryExtras = false,
+            )
+
+            /** Phone: 1s poll — current, voltage, power, charge-time estimate. */
+            val BatteryPoll = GetOptions(
+                includeBattery = false,
                 includeNetwork = false,
                 includeDisplay = false,
                 includeMemory = false,
@@ -172,7 +237,6 @@ object DeviceInfoProvider {
             val Processor = GetOptions(
                 includeBattery = false,
                 includeNetwork = false,
-                includeCellularSignal = false,
                 includeDisplay = false,
                 includeMemory = false,
                 includeDeviceStatic = false,
@@ -185,7 +249,6 @@ object DeviceInfoProvider {
             val PhonePoll = GetOptions(
                 includeBattery = false,
                 includeNetwork = false,
-                includeCellularSignal = true,
                 includeDisplay = false,
                 includeMemory = true,
                 includeDeviceStatic = false,
@@ -230,13 +293,6 @@ object DeviceInfoProvider {
 
     private const val THERMAL_CACHE_TTL_MS = 5_000L
 
-    /**
-     * Legacy HAL property ids (pre–API reshuffle). On newer AOSP, id 5 is
-     * [ENERGY_COUNTER], not charge full — always prefer reflection by field name first.
-     */
-    private const val LEGACY_BATTERY_PROPERTY_CHARGE_FULL = 5
-    private const val LEGACY_BATTERY_PROPERTY_CHARGE_FULL_DESIGN = 6
-
     @Volatile
     private var cachedStaticHardware: HardwareInfoReader.Summaries? = null
 
@@ -265,6 +321,7 @@ object DeviceInfoProvider {
     @Volatile private var cachedSnapshot: DeviceInfo? = null
 
     /** Call after install/update so camera/hardware rows refresh on next [get]. */
+    @Synchronized
     fun invalidateHardwareCache() {
         cachedStaticHardware = null
         cachedStaticHardwareLocale = null
@@ -435,6 +492,16 @@ object DeviceInfoProvider {
         return false
     }
 
+    /** Callers verify READ_PHONE_STATE and catch revocation races around the complete read. */
+    @SuppressLint("MissingPermission")
+    private fun readNrState(tm: TelephonyManager): Int {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val ss = tm.serviceState ?: return readNrStateReflect(tm)
+            return reflectInvokeInt(ss, "getNrState") ?: NR_STATE_NONE
+        }
+        return readNrStateReflect(tm)
+    }
+
     /**
      * Same idea as [readDisplayOverrideNetworkType] for [ServiceState.getNrState] on API 30+.
      */
@@ -489,10 +556,12 @@ object DeviceInfoProvider {
         return model ?: "—"
     }
 
+    @Synchronized
     fun get(context: Context, options: GetOptions = GetOptions.Full): DeviceInfo =
         when (options) {
             GetOptions.Full -> buildFull(context)
-            GetOptions.Battery -> refreshBattery(context)
+            GetOptions.BatteryBroadcast -> refreshBatteryBroadcast(context, null)
+            GetOptions.BatteryPoll -> refreshBatteryPoll(context)
             GetOptions.Network -> refreshNetwork(context)
             GetOptions.PhonePoll -> refreshPhonePoll(context)
             GetOptions.Processor -> refreshProcessor(context)
@@ -500,6 +569,157 @@ object DeviceInfoProvider {
             GetOptions.CarTelemetry -> refreshCarTelemetry(context)
             else -> buildFull(context)
         }
+
+    /** Pull-to-refresh: re-read only the data backing [sectionKey]. */
+    @Synchronized
+    fun refreshSection(context: Context, sectionKey: String): DeviceInfo =
+        when (sectionKey) {
+            DeviceInfoUiShared.Section.BATTERY -> {
+                refreshBatteryBroadcast(context)
+                refreshBatteryPoll(context)
+            }
+            DeviceInfoUiShared.Section.DISPLAY -> refreshDisplay(context)
+            DeviceInfoUiShared.Section.STORAGE_MEMORY -> refreshPhonePoll(context)
+            DeviceInfoUiShared.Section.CONNECTION,
+            DeviceInfoUiShared.Section.WIRELESS,
+            -> {
+                refreshNetwork(context)
+                refreshPhonePoll(context)
+            }
+            DeviceInfoUiShared.Section.DEVICE -> refreshDevice(context)
+            DeviceInfoUiShared.Section.PROCESSOR -> refreshProcessor(context)
+            DeviceInfoUiShared.Section.HARDWARE -> refreshHardware(context)
+            DeviceInfoUiShared.Section.SENSORS ->
+                cachedSnapshot ?: buildFull(context)
+            DeviceInfoUiShared.Section.LOCATION -> refreshLocation(context)
+            DeviceInfoUiShared.Section.VEHICLE -> refreshVehicle(context)
+            else -> cachedSnapshot ?: buildFull(context)
+        }
+
+    /**
+     * Broadcast path: only fields delivered by [Intent.ACTION_BATTERY_CHANGED] (+ power saver).
+     * Never writes [DeviceInfo.currentNowMicroA], [DeviceInfo.batteryVoltageV], or charge ETA.
+     */
+    @Synchronized
+    fun refreshBatteryBroadcast(context: Context, batteryIntent: Intent? = null): DeviceInfo {
+        val base = cachedSnapshot ?: return buildFull(context)
+        val intent = batteryIntent ?: context.registerReceiver(
+            null,
+            IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+        ) ?: return base
+        val slice = parseBatteryIntent(intent)
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val chargeCounterMicroAh = if (bm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+        } else {
+            0L
+        }
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val isPowerSaveMode = powerManager?.isPowerSaveMode == true
+        return cache(
+            base.copy(
+                batteryLevel = slice.batteryPct,
+                batteryTemperatureCelsius = slice.tempCelsius,
+                chargingStatus = slice.chargingStatus,
+                plugged = slice.pluggedStr,
+                health = slice.healthStr,
+                technology = slice.technology,
+                chargeCounterMicroAh = chargeCounterMicroAh,
+                isPowerSaveMode = isPowerSaveMode,
+            ),
+        )
+    }
+
+    /**
+     * Poll path: high-frequency telemetry only. Uses cached broadcast state for charge ETA inputs.
+     * Never writes level, plugged, health, temp, or charge counter.
+     */
+    @Synchronized
+    fun refreshBatteryPoll(context: Context): DeviceInfo {
+        val base = cachedSnapshot ?: return buildFull(context)
+        val batteryIntent = context.registerReceiver(
+            null,
+            IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+        ) ?: return base
+        val slice = parseBatteryIntent(batteryIntent)
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val currentNowMicroA = readCurrentNowMicroA(bm, batteryIntent)
+        val chargeTimeRemainingMs = readChargeTimeRemainingMs(
+            bm = bm,
+            status = slice.status,
+            plugged = slice.pluggedRaw,
+        )
+        return cache(
+            base.copy(
+                batteryVoltageV = slice.voltageV,
+                currentNowMicroA = currentNowMicroA,
+                chargeTimeRemainingMs = chargeTimeRemainingMs,
+            ),
+        )
+    }
+
+    private data class ParsedBatteryIntent(
+        val level: Int,
+        val scale: Int,
+        val batteryPct: Int,
+        val tempCelsius: Float,
+        val status: Int,
+        val chargingStatus: String,
+        val healthStr: String,
+        val voltageV: Float,
+        val pluggedRaw: Int,
+        val pluggedStr: String,
+        val technology: String,
+    )
+
+    private fun parseBatteryIntent(intent: Intent): ParsedBatteryIntent {
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+        val batteryPct = if (scale > 0) (level * 100 / scale) else 0
+        val tempRaw = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
+        val tempCelsius = tempRaw / 10f
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        val chargingStatus = when (status) {
+            BatteryManager.BATTERY_STATUS_CHARGING -> "Charging"
+            BatteryManager.BATTERY_STATUS_DISCHARGING -> "Discharging"
+            BatteryManager.BATTERY_STATUS_FULL -> "Full"
+            BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "Not charging"
+            else -> "Unknown"
+        }
+        val health = intent.getIntExtra(BatteryManager.EXTRA_HEALTH, -1)
+        val healthStr = when (health) {
+            BatteryManager.BATTERY_HEALTH_COLD -> "Cold"
+            BatteryManager.BATTERY_HEALTH_DEAD -> "Dead"
+            BatteryManager.BATTERY_HEALTH_GOOD -> "Good"
+            BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Overheat"
+            BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "Over voltage"
+            BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "Unspecified failure"
+            else -> "Unknown"
+        }
+        val voltageMv = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
+        val voltageV = voltageMv / 1000f
+        val pluggedRaw = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
+        val pluggedStr = when (pluggedRaw) {
+            BatteryManager.BATTERY_PLUGGED_AC -> "AC"
+            BatteryManager.BATTERY_PLUGGED_USB -> "USB"
+            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless"
+            else -> "None"
+        }
+        val technology = intent.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY)?.ifEmpty { null } ?: "Unknown"
+        return ParsedBatteryIntent(
+            level = level,
+            scale = scale,
+            batteryPct = batteryPct,
+            tempCelsius = tempCelsius,
+            status = status,
+            chargingStatus = chargingStatus,
+            healthStr = healthStr,
+            voltageV = voltageV,
+            pluggedRaw = pluggedRaw,
+            pluggedStr = pluggedStr,
+            technology = technology,
+        )
+    }
 
     private fun buildFull(context: Context): DeviceInfo {
         val batteryIntent = context.registerReceiver(
@@ -548,49 +768,33 @@ object DeviceInfoProvider {
         val technology = batteryIntent.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY)?.ifEmpty { null } ?: "Unknown"
 
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
-        val currentNowMicroA = if (bm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-        } else 0L
+        val currentNowMicroA = readCurrentNowMicroA(bm, batteryIntent)
         val chargeCounterMicroAh = if (bm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
         } else 0L
 
         val (cycleCount, batteryDesignCapacityMicroAh) =
             resolveBatteryExtras(context, bm, batteryIntent, refresh = true)
-        val chargeFullMicroAh = bm?.let { readBatteryChargeFullMicroAh(it, batteryIntent) }
+        val chargeFullReading = readBatteryChargeFullReading(bm, batteryIntent)
+        val batteryChargeFullMicroAh = chargeFullReading?.microAh
+        val chargeFullMicroAh = batteryChargeFullMicroAh
         val chargeTimeRemainingMs = readChargeTimeRemainingMs(
-            batteryIntent = batteryIntent,
             bm = bm,
             status = status,
             plugged = plugged,
-            level = level,
-            scale = scale,
-            chargeFullMicroAh = chargeFullMicroAh,
-            designMicroAh = batteryDesignCapacityMicroAh,
-            currentNowMicroA = currentNowMicroA,
         )
 
         // In Android Auto/Car host, app context may not be associated with a visual display.
         // Accessing context.display there can throw UnsupportedOperationException.
         val displayObj: Display? = try {
             val dm = context.getSystemService(DisplayManager::class.java)
-            dm?.getDisplay(Display.DEFAULT_DISPLAY) ?: context.display
+            dm?.getDisplay(Display.DEFAULT_DISPLAY)
+                ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) context.display else null
         } catch (_: Exception) {
             null
         }
-        val metrics = DisplayMetrics()
-        val displayRefreshRateHz = try {
-            if (displayObj != null) {
-                displayObj.getRealMetrics(metrics)
-                displayObj.refreshRate
-            } else {
-                metrics.setTo(context.resources.displayMetrics)
-                0f
-            }
-        } catch (_: Exception) {
-            metrics.setTo(context.resources.displayMetrics)
-            0f
-        }
+        val metrics = readDisplayMetrics(context, displayObj)
+        val displayRefreshRateHz = readCurrentDisplayRefreshRateHz(context, displayObj)
         val displayResolution = "${metrics.widthPixels} x ${metrics.heightPixels}"
         val displayRefreshModesSummary = formatSupportedRefreshRates(displayObj)
         val displayHdrSummary = formatHdrSummary(context, displayObj)
@@ -603,122 +807,7 @@ object DeviceInfoProvider {
             metrics.densityDpi,
         )
 
-        val hasNetworkPermission =
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_NETWORK_STATE) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-
-        var connectionType = "Unknown"
-        var isVpn = false
-        var isMeteredConnection = false
-        var isRoaming = false
-        var downstreamKbps = 0
-        var upstreamKbps = 0
-        var activeNetworkCaps: NetworkCapabilities? = null
-        var cellularNetworkCaps: NetworkCapabilities? = null
-
-        val wifiNetworkRowsVisible =
-            context.packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)
-        var wifiSupportedBandsSummary = "—"
-        var wifiLinkSpeedSummary = "—"
-        var wifiSignalSummary = "—"
-        var internetValidated: Boolean? = null
-        var captivePortal: Boolean? = null
-        var multiNetworkSummary = "—"
-
-        val hasWifiStatePermission = hasWifiStatePermission(context)
-        if (wifiNetworkRowsVisible && hasWifiStatePermission) {
-            wifiSupportedBandsSummary = readWifiSupportedBands(context)
-        }
-
-        if (hasNetworkPermission) {
-            val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            if (connectivity != null) {
-                cellularNetworkCaps = findCellularNetworkCapabilities(connectivity)
-                val active = connectivity.activeNetwork
-                val caps = active?.let { connectivity.getNetworkCapabilities(it) }
-                if (caps != null) {
-                    activeNetworkCaps = caps
-                    connectionType = when {
-                        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
-                        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Cellular"
-                        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
-                        caps.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> "Bluetooth"
-                        else -> "Online"
-                    }
-                    isVpn = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-                    isMeteredConnection = connectivity.isActiveNetworkMetered
-                    isRoaming = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)
-                    downstreamKbps = caps.linkDownstreamBandwidthKbps
-                    upstreamKbps = caps.linkUpstreamBandwidthKbps
-                    internetValidated =
-                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                    captivePortal =
-                        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
-                    multiNetworkSummary = readMultiNetworkSummary(connectivity)
-                    if (wifiNetworkRowsVisible && hasWifiStatePermission && connectionType == "Wi-Fi") {
-                        val wifiLive = readWifiLinkAndSignal(context, caps)
-                        wifiLinkSpeedSummary = wifiLive.first
-                        wifiSignalSummary = wifiLive.second
-                    }
-                } else {
-                    connectionType = "Offline"
-                    internetValidated = false
-                    captivePortal = false
-                    multiNetworkSummary = DeviceInfoUiShared.MultiNetworkToken.NONE
-                }
-            }
-        }
-
-        val bluetoothOn = try {
-            if (canReadBluetoothState(context)) bluetoothAdapterOrNull(context)?.isEnabled else null
-        } catch (_: SecurityException) {
-            null
-        }
-
-        var cellularType = "—"
-        var simCarrier = "—"
-        var simState = "—"
-        var simCountryIso = "—"
-        var simTypeSummary = "—"
-        var simDetailRowsVisible = false
-        var cellularSignalSummary = "—"
-        if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) {
-            try {
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-                    val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-                    if (tm != null) {
-                        simDetailRowsVisible = true
-                        val sm = context.getSystemService(SubscriptionManager::class.java)
-                        val simUi = buildSimSlotSummaries(tm, sm)
-                        val dataSubId = try {
-                            SubscriptionManager.getDefaultDataSubscriptionId()
-                        } catch (_: Exception) {
-                            SubscriptionManager.INVALID_SUBSCRIPTION_ID
-                        }
-                        val dataTm = if (dataSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-                            tm.createForSubscriptionId(dataSubId)
-                        } else {
-                            tm
-                        }
-                        if (hasInsertedSim(tm, sm)) {
-                            cellularSignalSummary = readCellularSignalSummaries(tm, sm)
-                        }
-                        cellularType = if (simUi.hasActiveSubscriptions) {
-                            resolveCellularNetworkLabel(
-                                dataTm,
-                                cellularNetworkCaps ?: activeNetworkCaps,
-                            )
-                        } else {
-                            "—"
-                        }
-                        simCarrier = simUi.carrier
-                        simState = simUi.state
-                        simCountryIso = simUi.country
-                        simTypeSummary = simUi.type
-                    }
-                }
-            } catch (_: SecurityException) { }
-        }
+        val network = readNetworkSlice(context)
 
         val stat = StatFs(Environment.getDataDirectory().path)
         val totalBytes = stat.totalBytes
@@ -764,6 +853,8 @@ object DeviceInfoProvider {
         }
         val thermalSummary = resolveThermalSummary(context, staticHw.thermal, refresh = true)
         val hw = staticHw.copy(thermal = thermalSummary)
+        val vehicleTab = VehicleInfoReader.read(context)
+        val locationTab = LocationInfoReader.read(context)
 
         return cache(DeviceInfo(
             batteryLevel = batteryPct,
@@ -777,6 +868,7 @@ object DeviceInfoProvider {
             chargeCounterMicroAh = chargeCounterMicroAh,
             cycleCount = cycleCount,
             batteryDesignCapacityMicroAh = batteryDesignCapacityMicroAh,
+            batteryChargeFullMicroAh = batteryChargeFullMicroAh,
             chargeTimeRemainingMs = chargeTimeRemainingMs,
             displayResolution = displayResolution,
             displayDiagonalInches = displayDiagonalInches,
@@ -784,27 +876,46 @@ object DeviceInfoProvider {
             displayRefreshModesSummary = displayRefreshModesSummary,
             displayHdrSummary = displayHdrSummary,
             screenDensityDpi = screenDensityDpi,
-            connectionType = connectionType,
-            bluetoothOn = bluetoothOn,
-            cellularType = cellularType,
-            simCarrier = simCarrier,
-            simState = simState,
-            simCountryIso = simCountryIso,
-            simTypeSummary = simTypeSummary,
-            simDetailRowsVisible = simDetailRowsVisible,
-            isVpn = isVpn,
-            isMeteredConnection = isMeteredConnection,
-            isRoaming = isRoaming,
-            downstreamKbps = downstreamKbps,
-            upstreamKbps = upstreamKbps,
-            wifiSupportedBandsSummary = wifiSupportedBandsSummary,
-            wifiLinkSpeedSummary = wifiLinkSpeedSummary,
-            wifiSignalSummary = wifiSignalSummary,
-            cellularSignalSummary = cellularSignalSummary,
-            internetValidated = internetValidated,
-            captivePortal = captivePortal,
-            multiNetworkSummary = multiNetworkSummary,
-            wifiNetworkRowsVisible = wifiNetworkRowsVisible,
+            connectionType = network.connectionType,
+            bluetoothCapable = network.bluetoothCapable,
+            bluetoothOn = network.bluetoothOn,
+            bluetoothTypeSummary = network.bluetoothTypeSummary,
+            castCapable = network.castCapable,
+            castSummary = network.castSummary,
+            wifiDirectSummary = network.wifiDirectSummary,
+            uwbSummary = network.uwbSummary,
+            airplaneModeOn = network.airplaneModeOn,
+            cellularType = network.cellularType,
+            simCarrier = network.simCarrier,
+            simState = network.simState,
+            simCountryIso = network.simCountryIso,
+            simTypeSummary = network.simTypeSummary,
+            telephonyCapable = network.telephonyCapable,
+            simDetailRowsVisible = network.simDetailRowsVisible,
+            simInserted = network.simInserted,
+            wifiOn = network.wifiOn,
+            isVpn = network.isVpn,
+            isMeteredConnection = network.isMeteredConnection,
+            isRoaming = network.isRoaming,
+            downstreamKbps = network.downstreamKbps,
+            upstreamKbps = network.upstreamKbps,
+            wifiSupportedBandsSummary = network.wifiSupportedBandsSummary,
+            wifiLinkSpeedSummary = network.wifiLinkSpeedSummary,
+            wifiSignalSummary = network.wifiSignalSummary,
+            wifiDownstreamKbps = network.wifiDownstreamKbps,
+            wifiUpstreamKbps = network.wifiUpstreamKbps,
+            cellularSignalSummary = network.cellularSignalSummary,
+            cellularDownstreamKbps = network.cellularDownstreamKbps,
+            cellularUpstreamKbps = network.cellularUpstreamKbps,
+            internetValidated = network.internetValidated,
+            captivePortal = network.captivePortal,
+            multiNetworkSummary = network.multiNetworkSummary,
+            wifiNetworkRowsVisible = network.wifiNetworkRowsVisible,
+            wifiConnected = network.wifiConnected,
+            wifiSsidSummary = network.wifiSsidSummary,
+            wifiFrequencySummary = network.wifiFrequencySummary,
+            wifiStandardSummary = network.wifiStandardSummary,
+            cellularOperatorSummary = network.cellularOperatorSummary,
             storageSummary = storageSummary,
             externalStorageVolumes = externalStorageVolumes,
             ramSummary = ramSummary,
@@ -825,92 +936,15 @@ object DeviceInfoProvider {
             buildId = buildId,
             isPowerSaveMode = isPowerSaveMode,
             cameraSummary = hw.camera,
-            nfcSummary = hw.nfc,
-            usbSummary = hw.usb,
+            nfcSummary = network.nfcSummary,
+            usbSummary = network.usbSummary,
             audioSummary = hw.audio,
             biometricSummary = hw.biometric,
             thermalSummary = hw.thermal,
+            batteryChargeFullSource = chargeFullReading?.source,
+            locationTab = locationTab,
+            vehicleTab = vehicleTab,
         ))
-    }
-
-    private fun refreshBattery(context: Context): DeviceInfo {
-        val base = cachedSnapshot ?: return buildFull(context)
-        val batteryIntent = context.registerReceiver(
-            null,
-            IntentFilter(Intent.ACTION_BATTERY_CHANGED),
-        ) ?: return base
-        val level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-        val scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
-        val batteryPct = if (scale > 0) (level * 100 / scale) else 0
-        val tempRaw = batteryIntent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
-        val tempCelsius = tempRaw / 10f
-        val status = batteryIntent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-        val chargingStatus = when (status) {
-            BatteryManager.BATTERY_STATUS_CHARGING -> "Charging"
-            BatteryManager.BATTERY_STATUS_DISCHARGING -> "Discharging"
-            BatteryManager.BATTERY_STATUS_FULL -> "Full"
-            BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "Not charging"
-            else -> "Unknown"
-        }
-        val health = batteryIntent.getIntExtra(BatteryManager.EXTRA_HEALTH, -1)
-        val healthStr = when (health) {
-            BatteryManager.BATTERY_HEALTH_COLD -> "Cold"
-            BatteryManager.BATTERY_HEALTH_DEAD -> "Dead"
-            BatteryManager.BATTERY_HEALTH_GOOD -> "Good"
-            BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Overheat"
-            BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "Over voltage"
-            BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "Unspecified failure"
-            else -> "Unknown"
-        }
-        val voltageMv = batteryIntent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
-        val voltageV = voltageMv / 1000f
-        val plugged = batteryIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
-        val pluggedStr = when (plugged) {
-            BatteryManager.BATTERY_PLUGGED_AC -> "AC"
-            BatteryManager.BATTERY_PLUGGED_USB -> "USB"
-            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless"
-            else -> "None"
-        }
-        val technology = batteryIntent.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY)?.ifEmpty { null } ?: "Unknown"
-        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
-        val currentNowMicroA = if (bm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-        } else {
-            0L
-        }
-        val chargeCounterMicroAh = if (bm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
-        } else {
-            0L
-        }
-        val chargeTimeRemainingMs = readChargeTimeRemainingMs(
-            batteryIntent = batteryIntent,
-            bm = bm,
-            status = status,
-            plugged = plugged,
-            level = level,
-            scale = scale,
-            chargeFullMicroAh = bm?.let { readBatteryChargeFullMicroAh(it, batteryIntent) },
-            designMicroAh = base.batteryDesignCapacityMicroAh,
-            currentNowMicroA = currentNowMicroA,
-        )
-        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        val isPowerSaveMode = powerManager?.isPowerSaveMode == true
-        return cache(
-            base.copy(
-                batteryLevel = batteryPct,
-                batteryTemperatureCelsius = tempCelsius,
-                batteryVoltageV = voltageV,
-                chargingStatus = chargingStatus,
-                plugged = pluggedStr,
-                health = healthStr,
-                technology = technology,
-                currentNowMicroA = currentNowMicroA,
-                chargeCounterMicroAh = chargeCounterMicroAh,
-                chargeTimeRemainingMs = chargeTimeRemainingMs,
-                isPowerSaveMode = isPowerSaveMode,
-            ),
-        )
     }
 
     private fun refreshNetwork(context: Context): DeviceInfo {
@@ -919,12 +953,22 @@ object DeviceInfoProvider {
         return cache(
             base.copy(
                 connectionType = slice.connectionType,
+                bluetoothCapable = slice.bluetoothCapable,
                 bluetoothOn = slice.bluetoothOn,
+                bluetoothTypeSummary = slice.bluetoothTypeSummary,
+                castCapable = slice.castCapable,
+                castSummary = slice.castSummary,
+                wifiDirectSummary = slice.wifiDirectSummary,
+                uwbSummary = slice.uwbSummary,
+                airplaneModeOn = slice.airplaneModeOn,
+                nfcSummary = slice.nfcSummary,
+                usbSummary = slice.usbSummary,
                 cellularType = slice.cellularType,
                 simCarrier = slice.simCarrier,
                 simState = slice.simState,
                 simCountryIso = slice.simCountryIso,
                 simTypeSummary = slice.simTypeSummary,
+                telephonyCapable = slice.telephonyCapable,
                 simDetailRowsVisible = slice.simDetailRowsVisible,
                 isVpn = slice.isVpn,
                 isMeteredConnection = slice.isMeteredConnection,
@@ -934,11 +978,22 @@ object DeviceInfoProvider {
                 wifiSupportedBandsSummary = slice.wifiSupportedBandsSummary,
                 wifiLinkSpeedSummary = slice.wifiLinkSpeedSummary,
                 wifiSignalSummary = slice.wifiSignalSummary,
+                wifiDownstreamKbps = slice.wifiDownstreamKbps,
+                wifiUpstreamKbps = slice.wifiUpstreamKbps,
                 cellularSignalSummary = slice.cellularSignalSummary,
+                cellularDownstreamKbps = slice.cellularDownstreamKbps,
+                cellularUpstreamKbps = slice.cellularUpstreamKbps,
                 internetValidated = slice.internetValidated,
                 captivePortal = slice.captivePortal,
                 multiNetworkSummary = slice.multiNetworkSummary,
                 wifiNetworkRowsVisible = slice.wifiNetworkRowsVisible,
+                wifiConnected = slice.wifiConnected,
+                wifiSsidSummary = slice.wifiSsidSummary,
+                wifiFrequencySummary = slice.wifiFrequencySummary,
+                wifiStandardSummary = slice.wifiStandardSummary,
+                cellularOperatorSummary = slice.cellularOperatorSummary,
+                simInserted = slice.simInserted,
+                wifiOn = slice.wifiOn,
             ),
         )
     }
@@ -957,7 +1012,8 @@ object DeviceInfoProvider {
         val ramSummary = formatFreeOf(context, ramAvailGB, ramTotalGB)
         val cpuCurrentFreq = resolveCpuCurrentFreq(refresh = true)
         val thermalSummary = resolveThermalSummary(context, base.thermalSummary, refresh = true)
-        val cellular = readCellularSignalSlice(context)
+        val wifiLive = readWifiLiveSlice(context)
+        val cellular = readCellularLiveSlice(context)
         return cache(
             base.copy(
                 storageSummary = storageSummary,
@@ -965,8 +1021,15 @@ object DeviceInfoProvider {
                 ramSummary = ramSummary,
                 cpuCurrentFreq = cpuCurrentFreq,
                 thermalSummary = thermalSummary,
+                wifiLinkSpeedSummary = wifiLive.linkSpeedSummary,
+                wifiSignalSummary = wifiLive.signalSummary,
+                wifiDownstreamKbps = wifiLive.downstreamKbps,
+                wifiUpstreamKbps = wifiLive.upstreamKbps,
                 cellularType = cellular.cellularType,
-                cellularSignalSummary = cellular.cellularSignalSummary,
+                cellularSignalSummary = cellular.signalSummary,
+                cellularDownstreamKbps = cellular.downstreamKbps,
+                cellularUpstreamKbps = cellular.upstreamKbps,
+                cellularOperatorSummary = cellular.cellularOperatorSummary,
             ),
         )
     }
@@ -998,8 +1061,70 @@ object DeviceInfoProvider {
         )
     }
 
+    private fun refreshDevice(context: Context): DeviceInfo {
+        val base = cachedSnapshot ?: return buildFull(context)
+        return cache(
+            base.copy(
+                deviceName = resolveUserDeviceName(context),
+                securityPatch = cachedSecurityPatch(),
+                androidVersion = cachedAndroidVersion(),
+                buildId = cachedBuildId(),
+                kernelVersion = cachedKernelVersion(),
+                bootloader = cachedBootloader(),
+            ),
+        )
+    }
+
+    private fun refreshHardware(context: Context): DeviceInfo {
+        val base = cachedSnapshot ?: return buildFull(context)
+        cachedStaticHardware = null
+        cachedStaticHardwareLocale = null
+        val localeKey = AppPreferences(context.applicationContext).getLanguageTag()
+        val staticHw = HardwareInfoReader.readSummaries(context).also {
+            cachedStaticHardware = it
+            cachedStaticHardwareLocale = localeKey
+        }
+        val thermalSummary = resolveThermalSummary(context, staticHw.thermal, refresh = true)
+        val hw = staticHw.copy(thermal = thermalSummary)
+        return cache(
+            base.copy(
+                cameraSummary = hw.camera,
+                audioSummary = hw.audio,
+                biometricSummary = hw.biometric,
+                thermalSummary = hw.thermal,
+            ),
+        )
+    }
+
+    @Synchronized
+    fun refreshVehicle(context: Context): DeviceInfo {
+        val base = cachedSnapshot ?: return buildFull(context)
+        return cache(base.copy(vehicleTab = VehicleInfoReader.read(context)))
+    }
+
+    /** Unit preference changed — refresh one section (vehicle re-formats distances). */
+    @Synchronized
+    fun refreshLocation(context: Context): DeviceInfo {
+        val base = cachedSnapshot ?: return buildFull(context)
+        val tab = LocationInfoReader.read(context)
+        if (!tab.motionRowsVisible) {
+            LocationInfoStore.clearMotion()
+            return cache(base.copy(locationTab = LocationInfoReader.read(context)))
+        }
+        return cache(base.copy(locationTab = tab))
+    }
+
+    @Synchronized
+    fun refreshDisplayUnits(context: Context, sectionKey: String): DeviceInfo =
+        when (sectionKey) {
+            DeviceInfoUiShared.Section.LOCATION -> refreshLocation(context)
+            DeviceInfoUiShared.Section.VEHICLE -> refreshVehicle(context)
+            else -> cachedSnapshot ?: buildFull(context)
+        }
+
     private fun refreshCarTelemetry(context: Context): DeviceInfo {
-        val battery = refreshBattery(context)
+        refreshBatteryBroadcast(context, null)
+        val battery = refreshBatteryPoll(context)
         val stat = StatFs(Environment.getDataDirectory().path)
         val totalGB = stat.totalBytes / (1024.0 * 1024.0 * 1024.0)
         val freeGB = stat.availableBytes / (1024.0 * 1024.0 * 1024.0)
@@ -1016,13 +1141,25 @@ object DeviceInfoProvider {
 
     private data class NetworkSlice(
         val connectionType: String,
+        val bluetoothCapable: Boolean,
         val bluetoothOn: Boolean?,
+        val bluetoothTypeSummary: String,
+        val nfcSummary: String,
+        val usbSummary: String,
+        val castCapable: Boolean,
+        val castSummary: String,
+        val wifiDirectSummary: String,
+        val uwbSummary: String,
+        val airplaneModeOn: Boolean?,
         val cellularType: String,
         val simCarrier: String,
         val simState: String,
         val simCountryIso: String,
         val simTypeSummary: String,
+        val telephonyCapable: Boolean,
         val simDetailRowsVisible: Boolean,
+        val simInserted: Boolean,
+        val wifiOn: Boolean?,
         val isVpn: Boolean,
         val isMeteredConnection: Boolean,
         val isRoaming: Boolean,
@@ -1031,11 +1168,20 @@ object DeviceInfoProvider {
         val wifiSupportedBandsSummary: String,
         val wifiLinkSpeedSummary: String,
         val wifiSignalSummary: String,
+        val wifiDownstreamKbps: Int,
+        val wifiUpstreamKbps: Int,
         val cellularSignalSummary: String,
+        val cellularDownstreamKbps: Int,
+        val cellularUpstreamKbps: Int,
         val internetValidated: Boolean?,
         val captivePortal: Boolean?,
         val multiNetworkSummary: String,
         val wifiNetworkRowsVisible: Boolean,
+        val wifiConnected: Boolean,
+        val wifiSsidSummary: String?,
+        val wifiFrequencySummary: String?,
+        val wifiStandardSummary: String?,
+        val cellularOperatorSummary: String?,
     )
 
     private data class DisplaySlice(
@@ -1071,9 +1217,20 @@ object DeviceInfoProvider {
         var wifiSupportedBandsSummary = "—"
         var wifiLinkSpeedSummary = "—"
         var wifiSignalSummary = "—"
+        var wifiDownstreamKbps = 0
+        var wifiUpstreamKbps = 0
+        var cellularDownstreamKbps = 0
+        var cellularUpstreamKbps = 0
         var internetValidated: Boolean? = null
         var captivePortal: Boolean? = null
         var multiNetworkSummary = "—"
+        var wifiConnected = false
+        var wifiSsidSummary: String? = null
+        var wifiFrequencySummary: String? = null
+        var wifiStandardSummary: String? = null
+        var cellularOperatorSummary: String? = null
+        var connectivityManager: ConnectivityManager? = null
+        var activeNetwork: android.net.Network? = null
 
         val hasWifiStatePermission = hasWifiStatePermission(context)
         if (wifiNetworkRowsVisible && hasWifiStatePermission) {
@@ -1083,8 +1240,10 @@ object DeviceInfoProvider {
         if (hasNetworkPermission) {
             val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             if (connectivity != null) {
-                cellularNetworkCaps = findCellularNetworkCapabilities(connectivity)
+                connectivityManager = connectivity
+                cellularNetworkCaps = findCellularNetworkCapabilities()
                 val active = connectivity.activeNetwork
+                activeNetwork = active
                 val caps = active?.let { connectivity.getNetworkCapabilities(it) }
                 if (caps != null) {
                     activeNetworkCaps = caps
@@ -1095,7 +1254,7 @@ object DeviceInfoProvider {
                         caps.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> "Bluetooth"
                         else -> "Online"
                     }
-                    isVpn = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                    isVpn = readVpnActive()
                     isMeteredConnection = connectivity.isActiveNetworkMetered
                     isRoaming = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)
                     downstreamKbps = caps.linkDownstreamBandwidthKbps
@@ -1104,25 +1263,35 @@ object DeviceInfoProvider {
                         caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                     captivePortal =
                         caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
-                    multiNetworkSummary = readMultiNetworkSummary(connectivity)
-                    if (wifiNetworkRowsVisible && hasWifiStatePermission && connectionType == "Wi-Fi") {
-                        val wifiLive = readWifiLinkAndSignal(context, caps)
-                        wifiLinkSpeedSummary = wifiLive.first
-                        wifiSignalSummary = wifiLive.second
-                    }
+                    multiNetworkSummary = readMultiNetworkSummary()
                 } else {
                     connectionType = "Offline"
                     internetValidated = false
                     captivePortal = false
                     multiNetworkSummary = DeviceInfoUiShared.MultiNetworkToken.NONE
                 }
+                if (wifiNetworkRowsVisible && hasWifiStatePermission) {
+                    val wifiCaps = findWifiNetworkCapabilities()
+                    if (wifiCaps != null) {
+                        wifiConnected = true
+                        val wifiLive = readWifiLinkAndSignal(context, wifiCaps)
+                        wifiLinkSpeedSummary = wifiLive.first
+                        wifiSignalSummary = wifiLive.second
+                        wifiDownstreamKbps = wifiCaps.linkDownstreamBandwidthKbps
+                        wifiUpstreamKbps = wifiCaps.linkUpstreamBandwidthKbps
+                        val extras = readWifiExtras(context, wifiCaps)
+                        wifiFrequencySummary = extras.frequency
+                        wifiStandardSummary = extras.standard
+                    }
+                }
+                if (connectionType == "Wi-Fi") {
+                    wifiConnected = true
+                }
+                cellularNetworkCaps?.let { caps ->
+                    cellularDownstreamKbps = caps.linkDownstreamBandwidthKbps
+                    cellularUpstreamKbps = caps.linkUpstreamBandwidthKbps
+                }
             }
-        }
-
-        val bluetoothOn = try {
-            if (canReadBluetoothState(context)) bluetoothAdapterOrNull(context)?.isEnabled else null
-        } catch (_: SecurityException) {
-            null
         }
 
         var cellularType = "—"
@@ -1131,8 +1300,15 @@ object DeviceInfoProvider {
         var simCountryIso = "—"
         var simTypeSummary = "—"
         var simDetailRowsVisible = false
+        var simInserted = false
         var cellularSignalSummary = "—"
-        if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) {
+        val telephonyCapable =
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)
+        var wifiOn: Boolean? = null
+        if (wifiNetworkRowsVisible) {
+            wifiOn = readWifiEnabled(context)
+        }
+        if (telephonyCapable) {
             try {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) ==
                     PackageManager.PERMISSION_GRANTED
@@ -1167,20 +1343,34 @@ object DeviceInfoProvider {
                         simState = simUi.state
                         simCountryIso = simUi.country
                         simTypeSummary = simUi.type
+                        cellularOperatorSummary = readCellularOperatorSummaries(tm, sm)
+                        simInserted = hasInsertedSim(tm, sm)
                     }
                 }
             } catch (_: SecurityException) {
             }
         }
 
+        val connection = ConnectionInfoReader.read(context)
+
         return NetworkSlice(
             connectionType = connectionType,
-            bluetoothOn = bluetoothOn,
+            bluetoothCapable = connection.bluetoothCapable,
+            bluetoothOn = connection.bluetoothOn,
+            bluetoothTypeSummary = connection.bluetoothTypeSummary,
+            nfcSummary = connection.nfcSummary,
+            usbSummary = connection.usbSummary,
+            castCapable = connection.castCapable,
+            castSummary = connection.castSummary,
+            wifiDirectSummary = connection.wifiDirectSummary,
+            uwbSummary = connection.uwbSummary,
+            airplaneModeOn = connection.airplaneModeOn,
             cellularType = cellularType,
             simCarrier = simCarrier,
             simState = simState,
             simCountryIso = simCountryIso,
             simTypeSummary = simTypeSummary,
+            telephonyCapable = telephonyCapable,
             simDetailRowsVisible = simDetailRowsVisible,
             isVpn = isVpn,
             isMeteredConnection = isMeteredConnection,
@@ -1190,11 +1380,139 @@ object DeviceInfoProvider {
             wifiSupportedBandsSummary = wifiSupportedBandsSummary,
             wifiLinkSpeedSummary = wifiLinkSpeedSummary,
             wifiSignalSummary = wifiSignalSummary,
+            wifiDownstreamKbps = wifiDownstreamKbps,
+            wifiUpstreamKbps = wifiUpstreamKbps,
             cellularSignalSummary = cellularSignalSummary,
+            cellularDownstreamKbps = cellularDownstreamKbps,
+            cellularUpstreamKbps = cellularUpstreamKbps,
             internetValidated = internetValidated,
             captivePortal = captivePortal,
             multiNetworkSummary = multiNetworkSummary,
             wifiNetworkRowsVisible = wifiNetworkRowsVisible,
+            wifiConnected = wifiConnected,
+            wifiSsidSummary = wifiSsidSummary,
+            wifiFrequencySummary = wifiFrequencySummary,
+            wifiStandardSummary = wifiStandardSummary,
+            cellularOperatorSummary = cellularOperatorSummary,
+            simInserted = simInserted,
+            wifiOn = wifiOn,
+        )
+    }
+
+    private fun readWifiEnabled(context: Context): Boolean? {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_WIFI_STATE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return null
+        }
+        return try {
+            context.applicationContext.getSystemService(WifiManager::class.java)?.isWifiEnabled
+        } catch (_: SecurityException) {
+            null
+        }
+    }
+
+    private data class CellularLiveSlice(
+        val cellularType: String,
+        val signalSummary: String,
+        val downstreamKbps: Int,
+        val upstreamKbps: Int,
+        val cellularOperatorSummary: String?,
+    )
+
+    private data class WifiLiveSlice(
+        val linkSpeedSummary: String,
+        val signalSummary: String,
+        val downstreamKbps: Int,
+        val upstreamKbps: Int,
+    )
+
+    private fun readWifiLiveSlice(context: Context): WifiLiveSlice {
+        if (!hasWifiStatePermission(context)) {
+            return WifiLiveSlice("—", "—", 0, 0)
+        }
+        val caps = findWifiNetworkCapabilities() ?: return WifiLiveSlice("—", "—", 0, 0)
+        val (link, signal) = readWifiLinkAndSignal(context, caps)
+        return WifiLiveSlice(
+            linkSpeedSummary = link,
+            signalSummary = signal,
+            downstreamKbps = caps.linkDownstreamBandwidthKbps,
+            upstreamKbps = caps.linkUpstreamBandwidthKbps,
+        )
+    }
+
+    private fun readCellularLiveSlice(context: Context): CellularLiveSlice {
+        var cellularType = "—"
+        var signalSummary = "—"
+        var downstreamKbps = 0
+        var upstreamKbps = 0
+        var cellularOperatorSummary: String? = null
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)) {
+            return CellularLiveSlice(
+                cellularType,
+                signalSummary,
+                downstreamKbps,
+                upstreamKbps,
+                cellularOperatorSummary,
+            )
+        }
+        try {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                return CellularLiveSlice(
+                    cellularType,
+                    signalSummary,
+                    downstreamKbps,
+                    upstreamKbps,
+                    cellularOperatorSummary,
+                )
+            }
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+                ?: return CellularLiveSlice(
+                    cellularType,
+                    signalSummary,
+                    downstreamKbps,
+                    upstreamKbps,
+                    cellularOperatorSummary,
+                )
+            val sm = context.getSystemService(SubscriptionManager::class.java)
+            val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val cellularNetworkCaps = findCellularNetworkCapabilities()
+            val active = connectivity?.activeNetwork
+            val activeNetworkCaps = active?.let { connectivity.getNetworkCapabilities(it) }
+            val dataSubId = try {
+                SubscriptionManager.getDefaultDataSubscriptionId()
+            } catch (_: Exception) {
+                SubscriptionManager.INVALID_SUBSCRIPTION_ID
+            }
+            val dataTm = if (dataSubId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                tm.createForSubscriptionId(dataSubId)
+            } else {
+                tm
+            }
+            val simUi = buildSimSlotSummaries(tm, sm)
+            if (hasInsertedSim(tm, sm)) {
+                signalSummary = readCellularSignalSummaries(tm, sm)
+            }
+            cellularType = if (simUi.hasActiveSubscriptions) {
+                resolveCellularNetworkLabel(dataTm, cellularNetworkCaps ?: activeNetworkCaps)
+            } else {
+                "—"
+            }
+            cellularOperatorSummary = readCellularOperatorSummaries(tm, sm)
+            cellularNetworkCaps?.let { caps ->
+                downstreamKbps = caps.linkDownstreamBandwidthKbps
+                upstreamKbps = caps.linkUpstreamBandwidthKbps
+            }
+        } catch (_: SecurityException) {
+        }
+        return CellularLiveSlice(
+            cellularType,
+            signalSummary,
+            downstreamKbps,
+            upstreamKbps,
+            cellularOperatorSummary,
         )
     }
 
@@ -1213,7 +1531,7 @@ object DeviceInfoProvider {
             val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return CellularSignalSlice(cellularType, cellularSignalSummary)
             val sm = context.getSystemService(SubscriptionManager::class.java)
             val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val cellularNetworkCaps = connectivity?.let { findCellularNetworkCapabilities(it) }
+            val cellularNetworkCaps = findCellularNetworkCapabilities()
             val active = connectivity?.activeNetwork
             val activeNetworkCaps = active?.let { connectivity.getNetworkCapabilities(it) }
             val dataSubId = try {
@@ -1243,23 +1561,13 @@ object DeviceInfoProvider {
     private fun readDisplaySlice(context: Context): DisplaySlice {
         val displayObj: Display? = try {
             val dm = context.getSystemService(DisplayManager::class.java)
-            dm?.getDisplay(Display.DEFAULT_DISPLAY) ?: context.display
+            dm?.getDisplay(Display.DEFAULT_DISPLAY)
+                ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) context.display else null
         } catch (_: Exception) {
             null
         }
-        val metrics = DisplayMetrics()
-        val displayRefreshRateHz = try {
-            if (displayObj != null) {
-                displayObj.getRealMetrics(metrics)
-                displayObj.refreshRate
-            } else {
-                metrics.setTo(context.resources.displayMetrics)
-                0f
-            }
-        } catch (_: Exception) {
-            metrics.setTo(context.resources.displayMetrics)
-            0f
-        }
+        val metrics = readDisplayMetrics(context, displayObj)
+        val displayRefreshRateHz = readCurrentDisplayRefreshRateHz(context, displayObj)
         return DisplaySlice(
             displayResolution = "${metrics.widthPixels} x ${metrics.heightPixels}",
             displayDiagonalInches = HardwareInfoReader.diagonalInchesFromMetrics(
@@ -1305,7 +1613,7 @@ object DeviceInfoProvider {
         context,
         bm,
         batteryIntent,
-        allowChargeFullFallback = true,
+        allowChargeFullFallback = false,
     )
 
     private fun readBatteryDesignCapacityInternal(
@@ -1318,11 +1626,8 @@ object DeviceInfoProvider {
         readDesignCapacityFromPowerProfile(context)?.let { return it }
         readDesignCapacityFromBatteryIntent(batteryIntent)?.let { return it }
         readDesignCapacityFromSysfs()?.let { return it }
-        if (bm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+        if (bm != null) {
             readBatteryDesignCapacityProperty(bm)?.let { return it }
-        }
-        if (allowChargeFullFallback && bm != null) {
-            readBatteryChargeFullMicroAh(bm, batteryIntent)?.let { return it }
         }
         return null
     }
@@ -1340,12 +1645,12 @@ object DeviceInfoProvider {
     private fun readBatteryDesignCapacityProperty(bm: BatteryManager): Long? {
         readBatteryLongPropertyByFieldName(bm, "BATTERY_PROPERTY_CHARGE_FULL_DESIGN")
             ?.let { return it }
-        return readBatteryLongProperty(bm, LEGACY_BATTERY_PROPERTY_CHARGE_FULL_DESIGN)
+        return null
     }
 
     private fun readBatteryChargeFullProperty(bm: BatteryManager): Long? {
         readBatteryLongPropertyByFieldName(bm, "BATTERY_PROPERTY_CHARGE_FULL")?.let { return it }
-        return readBatteryLongProperty(bm, LEGACY_BATTERY_PROPERTY_CHARGE_FULL)
+        return null
     }
 
     private fun readDesignCapacityFromBatteryManagerExtras(batteryIntent: Intent): Long? {
@@ -1365,11 +1670,29 @@ object DeviceInfoProvider {
     }
 
     private fun readBatteryChargeFullMicroAh(bm: BatteryManager?, batteryIntent: Intent): Long? {
-        if (bm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            readBatteryChargeFullProperty(bm)?.let { return it }
+        return readBatteryChargeFullReading(bm, batteryIntent)?.microAh
+    }
+
+    private data class BatteryCapacityReading(
+        val microAh: Long,
+        val source: BatteryCapacitySource,
+    )
+
+    private fun readBatteryChargeFullReading(
+        bm: BatteryManager?,
+        batteryIntent: Intent,
+    ): BatteryCapacityReading? {
+        bm?.let { manager ->
+            readBatteryChargeFullProperty(manager)?.let {
+                return BatteryCapacityReading(it, BatteryCapacitySource.BATTERY_MANAGER)
+            }
         }
-        readChargeFullFromBatteryIntent(batteryIntent)?.let { return it }
-        readChargeFullFromSysfs()?.let { return it }
+        readChargeFullFromBatteryIntent(batteryIntent)?.let {
+            return BatteryCapacityReading(it, BatteryCapacitySource.BATTERY_BROADCAST)
+        }
+        readChargeFullFromSysfs()?.let {
+            return BatteryCapacityReading(it, BatteryCapacitySource.SYSFS)
+        }
         return null
     }
 
@@ -1439,13 +1762,19 @@ object DeviceInfoProvider {
         val keys = listOf(
             "charge_full_design",
             "charge_full_design_uah",
+            "energy_full_design",
+            "energy_full_design_uah",
             "ChargeFullDesign",
             "android.os.extra.CHARGE_FULL_DESIGN",
             "BATTERY_CHARGE_FULL_DESIGN",
             "battery_charge_full_design",
             "mBatteryChargeFullDesign",
             "design_capacity",
+            "design_capacity_uah",
             "rated_capacity",
+            "nominal_capacity",
+            "factory_capacity",
+            "energy_full",
             "energy_full_design",
         )
         for (key in keys) {
@@ -1490,12 +1819,18 @@ object DeviceInfoProvider {
         val designFiles = listOf(
             "charge_full_design",
             "charge_full_design_uah",
-            "design_capacity",
             "energy_full_design",
+            "design_capacity",
+            "energy_full_design_uah",
+            "design_capacity_uah",
+            "energy_full",
+            "design_energy",
             "rated_capacity",
             "learned_capacity",
             "full_charge_design",
             "charge_nominal",
+            "nominal_capacity",
+            "factory_capacity",
         )
         val fullFiles = listOf(
             "charge_full",
@@ -1571,15 +1906,9 @@ object DeviceInfoProvider {
     }
 
     private fun readChargeTimeRemainingMs(
-        batteryIntent: Intent,
         bm: BatteryManager?,
         status: Int,
         plugged: Int,
-        level: Int,
-        scale: Int,
-        chargeFullMicroAh: Long?,
-        designMicroAh: Long?,
-        currentNowMicroA: Long,
     ): Long? {
         if (status == BatteryManager.BATTERY_STATUS_FULL) return null
         if (status != BatteryManager.BATTERY_STATUS_CHARGING || plugged == 0) return null
@@ -1589,61 +1918,25 @@ object DeviceInfoProvider {
             if (apiMs > 0L) return apiMs
         }
 
-        readChargeTimeRemainingFromBatteryIntent(batteryIntent)?.let { return it }
         readTimeToFullFromSysfs()?.let { sec -> return sec * 1_000L }
-
-        val currentMicroA = pickChargeCurrentMicroA(bm, currentNowMicroA)
-        return estimateChargeTimeRemainingMs(
-            level = level,
-            scale = scale,
-            chargeFullMicroAh = chargeFullMicroAh,
-            designMicroAh = designMicroAh,
-            currentMicroA = currentMicroA,
-        )
-    }
-
-    private fun pickChargeCurrentMicroA(bm: BatteryManager?, currentNowMicroA: Long): Long {
-        if (bm == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            return kotlin.math.abs(currentNowMicroA)
-        }
-        val average = runCatching {
-            bm.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE)
-        }.getOrDefault(0L)
-        val now = kotlin.math.abs(currentNowMicroA)
-        val avg = kotlin.math.abs(average)
-        return when {
-            avg in 80_000L..20_000_000L -> avg
-            now in 80_000L..20_000_000L -> now
-            else -> kotlin.math.max(now, avg)
-        }
-    }
-
-    private fun readChargeTimeRemainingFromBatteryIntent(batteryIntent: Intent): Long? {
-        val keys = listOf(
-            "time_to_full_now",
-            "charge_time",
-            "ChargeTime",
-            "TimeToFull",
-        )
-        for (key in keys) {
-            if (!batteryIntent.hasExtra(key)) continue
-            val asInt = batteryIntent.getIntExtra(key, -1)
-            parseTimeToFullSeconds(asInt.toLong())?.let { return it * 1_000L }
-            val asLong = batteryIntent.getLongExtra(key, -1L)
-            parseTimeToFullSeconds(asLong)?.let { return it * 1_000L }
-        }
         return null
     }
 
+    private fun readCurrentNowMicroA(bm: BatteryManager?, batteryIntent: Intent): Long {
+        val apiRaw = bm?.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) ?: Long.MIN_VALUE
+        val status = batteryIntent.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN)
+        val plugged = batteryIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
+        return BatteryCurrentNormalizer.normalize(
+            apiRawMicroA = apiRaw,
+            status = status,
+            plugged = plugged,
+            sysfsMicroA = BatteryCurrentNormalizer.readSysfsCurrentMicroA(),
+        )
+    }
+
     private fun parseTimeToFullSeconds(raw: Long): Long? {
-        if (raw <= 0L) return null
-        if (raw == Long.MAX_VALUE || raw >= 4_294_967_000L) return null
-        val seconds = when {
-            raw > 86_400L * 14L -> null
-            raw > 86_400L -> raw / 1_000L
-            else -> raw
-        } ?: return null
-        return seconds.takeIf { it in 1L..86_400L * 2L }
+        if (raw == Long.MAX_VALUE) return null
+        return raw.takeIf { it in 1L..86_400L * 2L }
     }
 
     private fun readTimeToFullFromSysfs(): Long? {
@@ -1676,29 +1969,6 @@ object DeviceInfoProvider {
         return null
     }
 
-    private fun estimateChargeTimeRemainingMs(
-        level: Int,
-        scale: Int,
-        chargeFullMicroAh: Long?,
-        designMicroAh: Long?,
-        currentMicroA: Long,
-    ): Long? {
-        if (scale <= 0 || level < 0) return null
-        val capacityMicroAh = chargeFullMicroAh
-            ?: designMicroAh?.takeIf { isPlausibleBatteryCapacityMicroAh(it) }
-            ?: return null
-        if (currentMicroA < 80_000L) return null
-        val currentMa = currentMicroA / 1_000.0
-        if (currentMa < 80.0 || currentMa > 20_000.0) return null
-        val fraction = level.toDouble() / scale.toDouble()
-        if (fraction >= 0.995) return null
-        val remainingMicroAh = ((1.0 - fraction) * capacityMicroAh).toLong()
-        if (remainingMicroAh <= 0L) return null
-        val hours = remainingMicroAh / 1_000.0 / currentMa
-        val ms = (hours * 3_600_000.0).toLong()
-        return ms.takeIf { it in 60_000L..172_800_000L }
-    }
-
     private data class SimSlotSummaries(
         val carrier: String,
         val state: String,
@@ -1710,6 +1980,8 @@ object DeviceInfoProvider {
     private fun simSlotLabel(slotIndex: Int): String =
         if (slotIndex >= 0) "SIM ${slotIndex + 1}" else "SIM"
 
+    /** Called only inside a READ_PHONE_STATE check plus SecurityException boundary. */
+    @SuppressLint("MissingPermission")
     private fun buildSimSlotSummaries(
         tm: TelephonyManager,
         sm: SubscriptionManager?
@@ -1769,6 +2041,7 @@ object DeviceInfoProvider {
         }
 
     /** True if any slot has a SIM inserted (state other than absent/unknown). */
+    @SuppressLint("MissingPermission")
     private fun hasInsertedSim(tm: TelephonyManager, sm: SubscriptionManager?): Boolean {
         val subs = sm?.activeSubscriptionInfoList
         if (!subs.isNullOrEmpty()) {
@@ -1798,15 +2071,26 @@ object DeviceInfoProvider {
      * Prefer [TelephonyDisplayInfo] (API 31+), [NetworkCapabilities] NR bits, and
      * [ServiceState] NR state when possible.
      */
+    @SuppressLint("MissingPermission")
     private fun resolveCellularNetworkLabel(
         dataTm: TelephonyManager,
-        activeCaps: NetworkCapabilities?
+        activeCaps: NetworkCapabilities?,
     ): String {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            resolveCellularNetworkLabelFromDisplayInfo(dataTm)?.let { return it }
+        }
         val rawType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             dataTm.dataNetworkType
         } else {
             @Suppress("DEPRECATION")
             dataTm.networkType
+        }
+        if (signalStrengthDeclaresNr(dataTm) ||
+            cellInfoDeclaresNr(dataTm) ||
+            cellularNetworkDeclaresNr(activeCaps) ||
+            serviceStateDeclaresNr(dataTm)
+        ) {
+            return nrLabelForAnchorType(rawType)
         }
         when (readDisplayOverrideNetworkType(dataTm)) {
             OVERRIDE_NETWORK_TYPE_NR_NSA,
@@ -1818,26 +2102,49 @@ object DeviceInfoProvider {
         if (displayRat == TelephonyManager.NETWORK_TYPE_NR) {
             return "5G NR"
         }
-        if (cellularNetworkDeclaresNr(activeCaps) ||
-            cellInfoDeclaresNr(dataTm) ||
-            signalStrengthDeclaresNr(dataTm)
-        ) {
-            return when (rawType) {
-                TelephonyManager.NETWORK_TYPE_NR -> "5G NR"
-                TelephonyManager.NETWORK_TYPE_LTE -> "5G NR (NSA)"
-                else -> "5G NR"
-            }
-        }
-        val nr = readNrStateReflect(dataTm)
+        val nr = readNrState(dataTm)
         val onNr = nr == NR_STATE_CONNECTED || nr == NR_STATE_NOT_RESTRICTED
         if (onNr) {
-            return when (rawType) {
-                TelephonyManager.NETWORK_TYPE_NR -> "5G NR"
-                TelephonyManager.NETWORK_TYPE_LTE -> "5G NR (NSA)"
-                else -> "5G NR"
-            }
+            return nrLabelForAnchorType(rawType)
+        }
+        @Suppress("DEPRECATION")
+        if (dataTm.networkType == TelephonyManager.NETWORK_TYPE_NR) {
+            return "5G NR"
         }
         return dataNetworkTypeToString(rawType)
+    }
+
+    private fun nrLabelForAnchorType(rawType: Int): String =
+        when (rawType) {
+            TelephonyManager.NETWORK_TYPE_NR -> "5G NR"
+            TelephonyManager.NETWORK_TYPE_LTE -> "5G NR (NSA)"
+            else -> "5G NR"
+        }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private fun resolveCellularNetworkLabelFromDisplayInfo(tm: TelephonyManager): String? {
+        val tdi = readTelephonyDisplayInfo(tm) ?: return null
+        when (reflectInvokeInt(tdi, "getOverrideNetworkType")) {
+            OVERRIDE_NETWORK_TYPE_NR_NSA,
+            OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE,
+            -> return "5G NR (NSA)"
+            OVERRIDE_NETWORK_TYPE_NR_ADVANCED -> return "5G NR"
+        }
+        if (reflectInvokeInt(tdi, "getNetworkType") == TelephonyManager.NETWORK_TYPE_NR) {
+            return "5G NR"
+        }
+        return null
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun serviceStateDeclaresNr(tm: TelephonyManager): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val ss = tm.serviceState ?: return false
+        return ss.networkRegistrationInfoList.orEmpty().any { info ->
+            info.accessNetworkTechnology == TelephonyManager.NETWORK_TYPE_NR &&
+                (info.domain == NetworkRegistrationInfo.DOMAIN_PS ||
+                    info.domain == NetworkRegistrationInfo.DOMAIN_CS)
+        }
     }
 
     private fun cellInfoDeclaresNr(tm: TelephonyManager): Boolean {
@@ -1924,19 +2231,102 @@ object DeviceInfoProvider {
             link to signal
         }.getOrElse { "—" to "—" }
 
+    private data class WifiExtras(
+        val frequency: String?,
+        val standard: String?,
+    )
+
+    private fun resolveWifiInfo(context: Context, caps: NetworkCapabilities): WifiInfo? {
+        @Suppress("DEPRECATION")
+        val managerInfo = context.applicationContext.getSystemService(WifiManager::class.java)?.connectionInfo
+        if (managerInfo != null) return managerInfo
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return caps.transportInfo as? WifiInfo
+        }
+        return null
+    }
+
+    private fun readWifiExtras(
+        context: Context,
+        caps: NetworkCapabilities,
+    ): WifiExtras {
+        var frequency: String? = null
+        var standard: String? = null
+        runCatching {
+            val wifiInfo = resolveWifiInfo(context, caps) ?: return WifiExtras(null, null)
+            frequency = formatWifiFrequency(wifiInfo.frequency)
+            standard = formatWifiStandard(wifiInfo)
+        }
+        return WifiExtras(frequency = frequency, standard = standard)
+    }
+
+    private fun formatWifiFrequency(mhz: Int): String? {
+        if (mhz <= 0) return null
+        val band = when (mhz) {
+            in 2400..2500 -> "2.4 GHz"
+            in 4900..5900 -> "5 GHz"
+            in 5925..7125 -> "6 GHz"
+            else -> null
+        }
+        return if (band != null) {
+            String.format(Locale.US, "%s (%d MHz)", band, mhz)
+        } else {
+            String.format(Locale.US, "%d MHz", mhz)
+        }
+    }
+
+    private fun formatWifiStandard(wifiInfo: WifiInfo): String? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return when (wifiInfo.wifiStandard) {
+            7 -> "Wi‑Fi 7" // WifiInfo.WIFI_STANDARD_11BE (API 33+)
+            6 -> "Wi‑Fi 6" // WIFI_STANDARD_11AX
+            5 -> "Wi‑Fi 5" // WIFI_STANDARD_11AC
+            4 -> "Wi‑Fi 4" // WIFI_STANDARD_11N
+            1 -> "Legacy" // WIFI_STANDARD_LEGACY
+            else -> null
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun readCellularOperatorSummaries(
+        tm: TelephonyManager,
+        sm: SubscriptionManager?,
+    ): String? {
+        val subs = sm?.activeSubscriptionInfoList
+            ?.sortedWith(
+                compareBy<SubscriptionInfo> { if (it.simSlotIndex >= 0) it.simSlotIndex else 99 }
+                    .thenBy { it.subscriptionId },
+            )
+            ?: emptyList()
+        if (subs.isEmpty()) {
+            val operator = tm.networkOperatorName?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            return "${simSlotLabel(0)}: $operator"
+        }
+        val lines = subs.mapNotNull { sub ->
+            val stm = tm.createForSubscriptionId(sub.subscriptionId)
+            val operator = stm.networkOperatorName?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return@mapNotNull null
+            "${simSlotLabel(sub.simSlotIndex)}: $operator"
+        }
+        return lines.takeIf { it.isNotEmpty() }?.let { DeviceInfoUiShared.joinList(it) }
+    }
+
     private fun formatWifiRssi(rssi: Int): String? {
         if (rssi in -127..0) return String.format(Locale.US, "%d dBm", rssi)
         return null
     }
 
-    private fun findCellularNetworkCapabilities(cm: ConnectivityManager): NetworkCapabilities? {
-        for (network in cm.allNetworks) {
-            val caps = cm.getNetworkCapabilities(network) ?: continue
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) return caps
+    private fun findWifiNetworkCapabilities(): NetworkCapabilities? =
+        networkCapabilitiesByNetwork.values.firstOrNull {
+            it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
         }
-        return null
-    }
 
+    private fun findCellularNetworkCapabilities(): NetworkCapabilities? =
+        networkCapabilitiesByNetwork.values.firstOrNull {
+            it.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+        }
+
+    @SuppressLint("MissingPermission")
     private fun readCellularSignalSummaries(tm: TelephonyManager, sm: SubscriptionManager?): String {
         val subs = sm?.activeSubscriptionInfoList
             ?.sortedWith(
@@ -1966,10 +2356,14 @@ object DeviceInfoProvider {
         return values.maxOrNull()
     }
 
-    private fun readMultiNetworkSummary(cm: ConnectivityManager): String {
+    private fun readVpnActive(): Boolean =
+        networkCapabilitiesByNetwork.values.any { capabilities ->
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        }
+
+    private fun readMultiNetworkSummary(): String {
         val labels = linkedSetOf<String>()
-        for (network in cm.allNetworks) {
-            val caps = cm.getNetworkCapabilities(network) ?: continue
+        for (caps in networkCapabilitiesByNetwork.values) {
             if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue
             if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) continue
             if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
@@ -1995,7 +2389,7 @@ object DeviceInfoProvider {
         val out = mutableListOf<ExternalStorageVolumeInfo>()
         for (volume in sm.storageVolumes) {
             if (volume.isPrimary) continue
-            val dir = volume.directory ?: continue
+            val dir = storageVolumeDirectory(context, sm, volume) ?: continue
             val root = runCatching { dir.canonicalFile }.getOrNull() ?: continue
             if (dataRoot != null && root == dataRoot) continue
             // StorageManager doesn't expose a stable "getStorageVolumeState(File)" across all SDKs.
@@ -2015,6 +2409,19 @@ object DeviceInfoProvider {
             out += ExternalStorageVolumeInfo(rowKey = rowKey, title = title, summary = summary)
         }
         return out.sortedBy { it.title.lowercase(Locale.getDefault()) }
+    }
+
+    private fun storageVolumeDirectory(
+        context: Context,
+        storageManager: StorageManager,
+        volume: StorageVolume,
+    ): File? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return volume.directory
+        return context.getExternalFilesDirs(null)
+            .filterNotNull()
+            .firstOrNull { dir ->
+                runCatching { storageManager.getStorageVolume(dir) == volume }.getOrDefault(false)
+            }
     }
 
     private fun volumeIdForRowKey(volume: StorageVolume, root: File): String {
@@ -2369,6 +2776,48 @@ object DeviceInfoProvider {
         return "—"
     }
 
+    private fun readDisplayMetrics(context: Context, display: Display?): DisplayMetrics =
+        DisplayMetrics().apply {
+            setTo(context.resources.displayMetrics)
+            val mode = runCatching { display?.mode }.getOrNull()
+            if (mode != null) {
+                widthPixels = mode.physicalWidth
+                heightPixels = mode.physicalHeight
+            }
+            densityDpi = context.resources.configuration.densityDpi
+            density = densityDpi / DisplayMetrics.DENSITY_DEFAULT.toFloat()
+        }
+
+    private fun readCurrentDisplayRefreshRateHz(
+        context: Context,
+        display: Display?,
+    ): Float {
+        try {
+            if (display != null) {
+                val modeHz = display.mode.refreshRate
+                if (modeHz > 0f && modeHz.isFinite()) return modeHz
+                val hz = display.refreshRate
+                if (hz > 0f && hz.isFinite()) return hz
+            }
+        } catch (_: Exception) {
+        }
+        return readPeakRefreshRateFromSettings(context) ?: 0f
+    }
+
+    /** [Settings.System] peak refresh (Hz) on VRR devices when [Display.getRefreshRate] stalls at 60. */
+    private fun readPeakRefreshRateFromSettings(context: Context): Float? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return runCatching {
+            val resolver = context.contentResolver
+            val keys = listOf("peak_refresh_rate", "min_refresh_rate")
+            for (key in keys) {
+                val hz = android.provider.Settings.System.getFloat(resolver, key, -1f)
+                if (hz > 0f && hz.isFinite()) return hz
+            }
+            null
+        }.getOrNull()
+    }
+
     private fun formatSupportedRefreshRates(display: Display?): String {
         if (display == null) return "—"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -2392,16 +2841,22 @@ object DeviceInfoProvider {
 
     private fun formatHdrSummary(context: Context, display: Display?): String {
         if (display == null) return context.getString(R.string.not_available)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!display.isHdr) return context.getString(R.string.hdr_no)
-            val caps = display.hdrCapabilities
-            if (caps == null) return context.getString(R.string.hdr_yes)
-            val types = caps.supportedHdrTypes
-            if (types.isEmpty()) return context.getString(R.string.hdr_yes)
-            return DeviceInfoUiShared.joinList(types.map { hdrTypeLabel(context, it) })
+        if (!display.isHdr) return context.getString(R.string.hdr_no)
+        val types = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            display.mode.supportedHdrTypes
+        } else {
+            legacySupportedHdrTypes(display)
         }
-        return context.getString(R.string.not_available)
+        val supportedTypes = types
+            .filter { it != HdrCapabilities.HDR_TYPE_INVALID }
+            .distinct()
+        if (supportedTypes.isEmpty()) return context.getString(R.string.hdr_yes)
+        return DeviceInfoUiShared.joinList(supportedTypes.map { hdrTypeLabel(context, it) })
     }
+
+    @Suppress("DEPRECATION")
+    private fun legacySupportedHdrTypes(display: Display): IntArray =
+        display.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
 
     private fun hdrTypeLabel(context: Context, type: Int): String =
         when (type) {
@@ -2424,6 +2879,7 @@ object DeviceInfoProvider {
         chargeCounterMicroAh = 0L,
         cycleCount = null,
         batteryDesignCapacityMicroAh = null,
+        batteryChargeFullMicroAh = null,
         chargeTimeRemainingMs = null,
         displayResolution = "Unknown",
         displayDiagonalInches = 0f,
@@ -2432,13 +2888,23 @@ object DeviceInfoProvider {
         displayHdrSummary = "—",
         screenDensityDpi = 0,
         connectionType = "Unknown",
+        bluetoothCapable = false,
         bluetoothOn = null,
+        bluetoothTypeSummary = "—",
+        castCapable = false,
+        castSummary = "—",
+        wifiDirectSummary = "—",
+        uwbSummary = "—",
+        airplaneModeOn = null,
         cellularType = "—",
         simCarrier = "—",
         simState = "—",
         simCountryIso = "—",
         simTypeSummary = "—",
+        telephonyCapable = false,
         simDetailRowsVisible = false,
+        simInserted = false,
+        wifiOn = null,
         isVpn = false,
         isMeteredConnection = false,
         isRoaming = false,
@@ -2447,11 +2913,20 @@ object DeviceInfoProvider {
         wifiSupportedBandsSummary = "—",
         wifiLinkSpeedSummary = "—",
         wifiSignalSummary = "—",
+        wifiDownstreamKbps = 0,
+        wifiUpstreamKbps = 0,
         cellularSignalSummary = "—",
+        cellularDownstreamKbps = 0,
+        cellularUpstreamKbps = 0,
         internetValidated = null,
         captivePortal = null,
         multiNetworkSummary = "—",
         wifiNetworkRowsVisible = false,
+        wifiConnected = false,
+        wifiSsidSummary = null,
+        wifiFrequencySummary = null,
+        wifiStandardSummary = null,
+        cellularOperatorSummary = null,
         storageSummary = "—",
         externalStorageVolumes = emptyList(),
         ramSummary = "—",
@@ -2477,5 +2952,7 @@ object DeviceInfoProvider {
         audioSummary = "—",
         biometricSummary = "—",
         thermalSummary = "—",
+        locationTab = LocationTabSnapshot(),
+        vehicleTab = VehicleTabSnapshot(),
     )
 }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <inset
+            android:insetLeft="@dimen/tab_active_indicator_horizontal_inset"
+            android:insetTop="@dimen/navigation_focus_vertical_inset"
+            android:insetRight="@dimen/tab_active_indicator_horizontal_inset"
+            android:insetBottom="@dimen/navigation_focus_vertical_inset">
+            <shape android:shape="rectangle">
+                <corners android:radius="@dimen/tab_active_indicator_corner_radius" />
+                <stroke
+                    android:width="@dimen/navigation_focus_stroke_width"
+                    android:color="?attr/colorPrimary" />
+            </shape>
+        </inset>
+    </item>
+    <item android:drawable="@android:color/transparent" />
+</selector>

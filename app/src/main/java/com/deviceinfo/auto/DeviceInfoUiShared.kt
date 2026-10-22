@@ -30,6 +30,12 @@ object DeviceInfoUiShared {
     /** Android Auto: inline separator for lists and compound values. */
     const val BULLET_SEP = " • "
 
+    /** Prefix for bulleted list lines (e.g. each camera in a group). */
+    const val LIST_BULLET_PREFIX = "• "
+
+    /** Separator between fields within one list item (e.g. MP - resolution - aperture). */
+    const val FIELD_SEP = " - "
+
     /** Join separate list items when building [DeviceInfo] (always phone multiline storage). */
     fun joinList(items: List<String>): String = items.joinToString(LIST_LINE_SEP)
 
@@ -49,28 +55,41 @@ object DeviceInfoUiShared {
         }
     }
 
-    /** Compound summaries stored with [COMPOUND_SEP] (e.g. thermal status + °C). */
+    /** Compound summaries stored with [COMPOUND_SEP] (e.g. thermal status + encoded temp). */
     fun compoundSummaryForDisplay(context: Context, raw: String, surface: DisplaySurface): String {
         if (raw == DASH || raw.isBlank()) return valueNotAvailableLabel(context)
-        return when (surface) {
-            DisplaySurface.PHONE -> raw.replace(COMPOUND_SEP, LIST_LINE_SEP)
-            DisplaySurface.CAR -> raw.replace(COMPOUND_SEP, BULLET_SEP)
-        }
+        val parts = raw.split(COMPOUND_SEP).map { MeasurementUnits.formatStoredPart(context, it.trim()) }
+        return joinCompound(parts, surface)
     }
 
-    fun temperatureText(celsius: Float): String =
-        String.format(Locale.US, "%.1f °C", celsius)
+    fun temperatureText(context: Context, celsius: Float): String =
+        MeasurementUnits.temperature(context, celsius)
 
     object Section {
         const val BATTERY = "section_battery"
         const val DISPLAY = "section_display"
         const val STORAGE_MEMORY = "section_storage_memory"
-        const val NETWORK = "section_network"
+        const val CONNECTION = "section_connection"
+        const val WIRELESS = "section_wireless"
+        /** @deprecated Use [CONNECTION] or [WIRELESS]. */
+        const val NETWORK = WIRELESS
         const val DEVICE = "section_device"
         const val PROCESSOR = "section_processor"
         const val RAM = "section_ram"
         const val HARDWARE = "section_hardware"
         const val SENSORS = "section_sensors"
+        const val LOCATION = "section_location"
+        const val VEHICLE = "section_vehicle"
+    }
+
+    object Subsection {
+        const val NETWORK = "subsection_network"
+        const val WIFI = "subsection_wifi"
+        const val CELLULAR = "subsection_cellular"
+        const val LOCATION_COMPASS = "subsection_location_compass"
+        const val LOCATION_GOOGLE_PLAY_SERVICES = "subsection_location_google_play_services"
+        const val LOCATION_NETWORK = "subsection_location_network"
+        const val LOCATION_GPS = "subsection_location_gps"
     }
 
     object Row {
@@ -85,6 +104,8 @@ object DeviceInfoUiShared {
         const val CHARGE_COUNTER = "row_charge_counter"
         const val CYCLE_COUNT = "row_cycle_count"
         const val BATTERY_DESIGN_CAPACITY = "row_battery_design_capacity"
+        const val BATTERY_CHARGE_FULL = "row_battery_charge_full"
+        const val BATTERY_CHARGE_FULL_SOURCE = "row_battery_charge_full_source"
         const val CHARGE_TIME_REMAINING = "row_charge_time_remaining"
         const val RESOLUTION = "row_resolution"
         const val DISPLAY_DIAGONAL = "row_display_diagonal"
@@ -107,20 +128,35 @@ object DeviceInfoUiShared {
         const val INTERNET_VALIDATED = "row_internet_validated"
         const val CAPTIVE_PORTAL = "row_captive_portal"
         const val MULTI_NETWORK = "row_multi_network"
+        const val ACTIVE_BANDWIDTH = "row_active_bandwidth"
+        const val WIFI = "row_wifi"
+        const val WIFI_SSID = "row_wifi_ssid"
+        const val WIFI_FREQUENCY = "row_wifi_frequency"
+        const val WIFI_STANDARD = "row_wifi_standard"
         const val WIFI_BANDS = "row_wifi_bands"
         const val WIFI_LINK_SPEED = "row_wifi_link_speed"
         const val WIFI_SIGNAL = "row_wifi_signal"
+        const val WIFI_BANDWIDTH = "row_wifi_bandwidth"
         const val BLUETOOTH = "row_bluetooth"
+        const val BLUETOOTH_TYPE = "row_bluetooth_type"
+        const val CAST = "row_cast"
+        const val NFC = "row_nfc"
+        const val USB = "row_usb"
+        const val WIFI_DIRECT = "row_wifi_direct"
+        const val UWB = "row_uwb"
+        const val AIRPLANE_MODE = "row_airplane_mode"
         const val CELLULAR = "row_cellular"
+        const val CELLULAR_OPERATOR = "row_cellular_operator"
         const val CELLULAR_SIGNAL = "row_cellular_signal"
+        const val CELLULAR_BANDWIDTH = "row_cellular_bandwidth"
         const val CARRIER = "row_carrier"
         const val SIM_STATE = "row_sim_state"
         const val SIM_COUNTRY = "row_sim_country"
         const val SIM_TYPE = "row_sim_type"
+        const val SIM_PHONE_PERMISSION = "row_sim_phone_permission"
         const val VPN = "row_vpn"
         const val METERED = "row_metered"
         const val ROAMING = "row_roaming"
-        const val BANDWIDTH = "row_bandwidth"
         const val DEVICE_NAME = "row_device_name"
         const val MODEL = "row_model"
         const val MANUFACTURER = "row_manufacturer"
@@ -138,8 +174,6 @@ object DeviceInfoUiShared {
         const val OPENGL_ES = "row_opengl_es"
 
         const val HW_CAMERA = "row_hw_camera"
-        const val HW_NFC = "row_hw_nfc"
-        const val HW_USB = "row_hw_usb"
         const val HW_AUDIO = "row_hw_audio"
         const val HW_BIOMETRIC = "row_hw_biometric"
         const val HW_THERMAL = "row_hw_thermal"
@@ -153,21 +187,170 @@ object DeviceInfoUiShared {
         const val SENSOR_AMBIENT_TEMPERATURE = "row_sensor_ambient_temperature"
         const val SENSOR_PROXIMITY = "row_sensor_proximity"
         const val SENSOR_HINGE_ANGLE = "row_sensor_hinge_angle"
+
+        const val VEHICLE_CONNECTION = "row_vehicle_connection"
+        const val VEHICLE_IDENTITY = "row_vehicle_identity"
+        const val VEHICLE_MAKE = "row_vehicle_make"
+        const val VEHICLE_MODEL = "row_vehicle_model"
+        const val VEHICLE_YEAR = "row_vehicle_year"
+        const val VEHICLE_SPEED = "row_vehicle_speed"
+        const val VEHICLE_SPEED_RAW = "row_vehicle_speed_raw"
+        const val VEHICLE_FUEL_LEVEL = "row_vehicle_fuel_level"
+        const val VEHICLE_EV_BATTERY = "row_vehicle_ev_battery"
+        const val VEHICLE_RANGE = "row_vehicle_range"
+        const val VEHICLE_ODOMETER = "row_vehicle_odometer"
+        const val VEHICLE_FUEL_TYPES = "row_vehicle_fuel_types"
+        const val VEHICLE_EV_CONNECTORS = "row_vehicle_ev_connectors"
+        const val VEHICLE_DATA_STATUS = "row_vehicle_data_status"
+
+        const val LOCATION_GPS = "row_location_gps"
+        const val LOCATION_NETWORK = "row_location_network"
+        const val LOCATION_GOOGLE_STATUS = "row_location_google_status"
+        const val LOCATION_GOOGLE_COORDINATES = "row_location_google_coordinates"
+        const val LOCATION_GOOGLE_ACCURACY = "row_location_google_accuracy"
+        const val LOCATION_GOOGLE_ALTITUDE = "row_location_google_altitude"
+        const val LOCATION_GOOGLE_SPEED = "row_location_google_speed"
+        const val LOCATION_GOOGLE_BEARING = "row_location_google_bearing"
+        const val LOCATION_GOOGLE_FIX_AGE = "row_location_google_fix_age"
+        const val LOCATION_DEVICE_HEADING = "row_location_device_heading"
+        const val LOCATION_DEVICE_HEADING_ACCURACY = "row_location_device_heading_accuracy"
+        const val LOCATION_DEVICE_HEADING_SOURCE = "row_location_device_heading_source"
+        const val LOCATION_NETWORK_SPEED = "row_location_network_speed"
+        const val LOCATION_NETWORK_BEARING = "row_location_network_bearing"
+        const val LOCATION_NETWORK_ACCURACY = "row_location_network_accuracy"
+        const val LOCATION_NETWORK_COORDINATES = "row_location_network_coordinates"
+        const val LOCATION_NETWORK_ALTITUDE = "row_location_network_altitude"
+        const val LOCATION_NETWORK_PROVIDER = "row_location_network_provider"
+        const val LOCATION_NETWORK_FIX_AGE = "row_location_network_fix_age"
+        const val LOCATION_GPS_SPEED = "row_location_gps_speed"
+        const val LOCATION_GPS_BEARING = "row_location_gps_bearing"
+        const val LOCATION_GPS_ACCURACY = "row_location_gps_accuracy"
+        const val LOCATION_GPS_COORDINATES = "row_location_gps_coordinates"
+        const val LOCATION_GPS_ALTITUDE = "row_location_gps_altitude"
+        const val LOCATION_GPS_PROVIDER = "row_location_gps_provider"
+        const val LOCATION_GPS_FIX_AGE = "row_location_gps_fix_age"
+        const val LOCATION_GNSS_SATELLITES = "row_location_gnss_satellites"
+        const val LOCATION_GNSS_FREQUENCY_BANDS = "row_location_gnss_frequency_bands"
+        const val LOCATION_GPS_VERTICAL_ACCURACY = "row_location_gps_vertical_accuracy"
+        const val LOCATION_GPS_SPEED_ACCURACY = "row_location_gps_speed_accuracy"
+        const val LOCATION_GPS_BEARING_ACCURACY = "row_location_gps_bearing_accuracy"
+        const val LOCATION_GPS_MOCK = "row_location_gps_mock"
     }
+
+    fun isSubsectionKey(key: String): Boolean = key.startsWith("subsection_")
 
     fun sectionTitle(context: Context, key: String): String =
         when (key) {
             Section.BATTERY -> context.getString(R.string.section_battery)
             Section.DISPLAY -> context.getString(R.string.section_display)
             Section.STORAGE_MEMORY -> context.getString(R.string.section_storage_memory)
-            Section.NETWORK -> context.getString(R.string.section_network)
+            Section.CONNECTION -> context.getString(R.string.section_connection)
+            Section.WIRELESS -> context.getString(R.string.section_wireless)
             Section.DEVICE -> context.getString(R.string.section_device)
             Section.PROCESSOR -> context.getString(R.string.section_processor)
             Section.HARDWARE -> context.getString(R.string.section_hardware)
             Section.SENSORS -> context.getString(R.string.section_sensors)
+            Section.LOCATION -> context.getString(R.string.section_location)
+            Section.VEHICLE -> context.getString(R.string.section_vehicle)
             Section.RAM -> context.getString(R.string.section_storage_memory)
+            Subsection.NETWORK -> context.getString(R.string.subsection_network)
+            Subsection.WIFI -> context.getString(R.string.subsection_wifi)
+            Subsection.CELLULAR -> context.getString(R.string.subsection_cellular)
+            Subsection.LOCATION_COMPASS -> context.getString(R.string.subsection_location_compass)
+            Subsection.LOCATION_GOOGLE_PLAY_SERVICES ->
+                context.getString(R.string.subsection_location_google_play_services)
+            Subsection.LOCATION_NETWORK -> context.getString(R.string.subsection_location_network)
+            Subsection.LOCATION_GPS -> context.getString(R.string.subsection_location_gps)
             else -> key
         }
+
+    fun sectionIcon(sectionKey: String): Int =
+        when (sectionKey) {
+            Section.BATTERY -> R.drawable.ic_row_battery_full
+            Section.DISPLAY -> R.drawable.ic_row_refresh_rate
+            Section.STORAGE_MEMORY -> R.drawable.ic_row_storage
+            Section.CONNECTION -> R.drawable.ic_row_connection
+            Section.WIRELESS -> R.drawable.ic_row_wifi
+            Section.DEVICE -> R.drawable.ic_row_android
+            Section.PROCESSOR -> R.drawable.ic_row_memory
+            Section.HARDWARE -> R.drawable.ic_row_camera
+            Section.SENSORS -> R.drawable.ic_row_sensor
+            Section.LOCATION -> R.drawable.ic_row_location
+            Section.VEHICLE -> R.drawable.ic_row_vehicle_car
+            else -> R.drawable.ic_row_unknown
+        }
+
+    fun vehicleRowIconRes(rowKey: String): Int =
+        when (rowKey) {
+            Row.VEHICLE_CONNECTION -> R.drawable.ic_row_vehicle_connection
+            Row.VEHICLE_IDENTITY -> R.drawable.ic_row_vehicle_car
+            Row.VEHICLE_MAKE -> R.drawable.ic_row_vehicle_make
+            Row.VEHICLE_MODEL -> R.drawable.ic_row_vehicle_car
+            Row.VEHICLE_YEAR -> R.drawable.ic_row_vehicle_year
+            Row.VEHICLE_SPEED,
+            Row.VEHICLE_SPEED_RAW,
+            -> R.drawable.ic_row_speed
+            Row.VEHICLE_FUEL_LEVEL,
+            Row.VEHICLE_FUEL_TYPES,
+            -> R.drawable.ic_row_vehicle_fuel
+            Row.VEHICLE_EV_BATTERY -> R.drawable.ic_row_vehicle_ev_battery
+            Row.VEHICLE_RANGE,
+            Row.VEHICLE_ODOMETER,
+            -> R.drawable.ic_row_vehicle_route
+            Row.VEHICLE_EV_CONNECTORS -> R.drawable.ic_row_vehicle_ev_connectors
+            Row.VEHICLE_DATA_STATUS -> R.drawable.ic_row_vehicle_data_status
+            else -> R.drawable.ic_row_unknown
+        }
+
+    fun locationRowIconRes(rowKey: String): Int =
+        when (rowKey) {
+            Row.LOCATION_GPS,
+            Row.LOCATION_GPS_COORDINATES,
+            Row.LOCATION_GOOGLE_STATUS,
+            Row.LOCATION_GOOGLE_COORDINATES,
+            Row.LOCATION_GOOGLE_ACCURACY,
+            Row.LOCATION_GPS_ACCURACY,
+            Row.LOCATION_GPS_PROVIDER,
+            -> R.drawable.ic_row_location
+            Row.LOCATION_NETWORK,
+            Row.LOCATION_NETWORK_COORDINATES,
+            Row.LOCATION_NETWORK_ACCURACY,
+            Row.LOCATION_NETWORK_PROVIDER,
+            -> R.drawable.ic_row_cell_tower
+            Row.LOCATION_GOOGLE_SPEED,
+            Row.LOCATION_NETWORK_SPEED,
+            Row.LOCATION_GPS_SPEED,
+            -> R.drawable.ic_row_speed
+            Row.LOCATION_GOOGLE_BEARING,
+            Row.LOCATION_DEVICE_HEADING,
+            Row.LOCATION_DEVICE_HEADING_ACCURACY,
+            Row.LOCATION_DEVICE_HEADING_SOURCE,
+            Row.LOCATION_NETWORK_BEARING,
+            Row.LOCATION_GPS_BEARING,
+            -> R.drawable.ic_row_location_bearing
+            Row.LOCATION_GOOGLE_ALTITUDE,
+            Row.LOCATION_NETWORK_ALTITUDE,
+            Row.LOCATION_GPS_ALTITUDE,
+            -> R.drawable.ic_row_location_altitude
+            Row.LOCATION_GOOGLE_FIX_AGE,
+            Row.LOCATION_NETWORK_FIX_AGE,
+            Row.LOCATION_GPS_FIX_AGE,
+            -> R.drawable.ic_row_location_fix_age
+            Row.LOCATION_GNSS_SATELLITES,
+            Row.LOCATION_GNSS_FREQUENCY_BANDS,
+            Row.LOCATION_GPS_VERTICAL_ACCURACY,
+            Row.LOCATION_GPS_SPEED_ACCURACY,
+            Row.LOCATION_GPS_BEARING_ACCURACY,
+            Row.LOCATION_GPS_MOCK,
+            -> R.drawable.ic_row_location
+            else -> R.drawable.ic_row_unknown
+        }
+
+    fun sectionForRowKey(key: String): String? {
+        if (key.startsWith("row_sensor_")) return Section.SENSORS
+        if (Row.isStorageVolumeRowKey(key)) return Section.STORAGE_MEMORY
+        return DeviceInfoSchema.staticRowSectionMap[key]
+    }
 
     fun rowTitle(context: Context, key: String): String =
         when (key) {
@@ -182,6 +365,9 @@ object DeviceInfoUiShared {
             Row.CHARGE_COUNTER -> context.getString(R.string.row_charge_counter)
             Row.CYCLE_COUNT -> context.getString(R.string.row_cycle_count)
             Row.BATTERY_DESIGN_CAPACITY -> context.getString(R.string.row_battery_design_capacity)
+            Row.BATTERY_CHARGE_FULL -> context.getString(R.string.row_battery_charge_full)
+            Row.BATTERY_CHARGE_FULL_SOURCE ->
+                context.getString(R.string.row_battery_charge_full_source)
             Row.CHARGE_TIME_REMAINING -> context.getString(R.string.row_charge_time_remaining)
             Row.RESOLUTION -> context.getString(R.string.row_resolution)
             Row.DISPLAY_DIAGONAL -> context.getString(R.string.row_display_diagonal)
@@ -196,20 +382,35 @@ object DeviceInfoUiShared {
             Row.INTERNET_VALIDATED -> context.getString(R.string.row_internet_validated)
             Row.CAPTIVE_PORTAL -> context.getString(R.string.row_captive_portal)
             Row.MULTI_NETWORK -> context.getString(R.string.row_multi_network)
+            Row.ACTIVE_BANDWIDTH -> context.getString(R.string.row_active_bandwidth)
+            Row.WIFI -> context.getString(R.string.row_wifi_state)
+            Row.WIFI_SSID -> context.getString(R.string.row_wifi_ssid)
+            Row.WIFI_FREQUENCY -> context.getString(R.string.row_wifi_frequency)
+            Row.WIFI_STANDARD -> context.getString(R.string.row_wifi_standard)
             Row.WIFI_BANDS -> context.getString(R.string.row_wifi_bands)
             Row.WIFI_LINK_SPEED -> context.getString(R.string.row_wifi_link_speed)
             Row.WIFI_SIGNAL -> context.getString(R.string.row_wifi_signal)
+            Row.WIFI_BANDWIDTH -> context.getString(R.string.row_wifi_bandwidth)
             Row.BLUETOOTH -> "Bluetooth"
+            Row.BLUETOOTH_TYPE -> context.getString(R.string.row_bluetooth_type)
+            Row.CAST -> context.getString(R.string.row_cast)
+            Row.NFC -> "NFC"
+            Row.USB -> "USB"
+            Row.WIFI_DIRECT -> context.getString(R.string.row_wifi_direct)
+            Row.UWB -> context.getString(R.string.row_uwb)
+            Row.AIRPLANE_MODE -> context.getString(R.string.row_airplane_mode)
             Row.CELLULAR -> context.getString(R.string.row_cellular)
+            Row.CELLULAR_OPERATOR -> context.getString(R.string.row_cellular_operator)
             Row.CELLULAR_SIGNAL -> context.getString(R.string.row_cellular_signal)
+            Row.CELLULAR_BANDWIDTH -> context.getString(R.string.row_cellular_bandwidth)
             Row.CARRIER -> context.getString(R.string.row_carrier)
             Row.SIM_STATE -> context.getString(R.string.row_sim_state)
             Row.SIM_COUNTRY -> context.getString(R.string.row_sim_country)
             Row.SIM_TYPE -> context.getString(R.string.row_sim_type)
+            Row.SIM_PHONE_PERMISSION -> context.getString(R.string.permission_label_phone_state)
             Row.VPN -> "VPN"
             Row.METERED -> context.getString(R.string.row_metered)
             Row.ROAMING -> context.getString(R.string.row_roaming)
-            Row.BANDWIDTH -> context.getString(R.string.row_bandwidth)
             Row.DEVICE_NAME -> context.getString(R.string.row_device_name)
             Row.MODEL -> context.getString(R.string.row_model)
             Row.MANUFACTURER -> context.getString(R.string.row_manufacturer)
@@ -226,8 +427,6 @@ object DeviceInfoUiShared {
             Row.GPU -> "GPU"
             Row.OPENGL_ES -> "OpenGL ES"
             Row.HW_CAMERA -> context.getString(R.string.row_hw_camera)
-            Row.HW_NFC -> context.getString(R.string.row_hw_nfc)
-            Row.HW_USB -> context.getString(R.string.row_hw_usb)
             Row.HW_AUDIO -> context.getString(R.string.row_hw_audio)
             Row.HW_BIOMETRIC -> context.getString(R.string.row_hw_biometric)
             Row.HW_THERMAL -> context.getString(R.string.row_hw_thermal)
@@ -240,6 +439,73 @@ object DeviceInfoUiShared {
             Row.SENSOR_AMBIENT_TEMPERATURE -> context.getString(R.string.sensor_row_ambient_temperature)
             Row.SENSOR_PROXIMITY -> context.getString(R.string.sensor_row_proximity)
             Row.SENSOR_HINGE_ANGLE -> context.getString(R.string.sensor_row_hinge_angle)
+            Row.VEHICLE_CONNECTION -> context.getString(R.string.row_vehicle_connection)
+            Row.VEHICLE_IDENTITY -> context.getString(R.string.row_vehicle_identity)
+            Row.VEHICLE_MAKE -> context.getString(R.string.row_vehicle_make)
+            Row.VEHICLE_MODEL -> context.getString(R.string.row_vehicle_model)
+            Row.VEHICLE_YEAR -> context.getString(R.string.row_vehicle_year)
+            Row.VEHICLE_SPEED -> context.getString(R.string.row_vehicle_speed)
+            Row.VEHICLE_SPEED_RAW -> context.getString(R.string.row_vehicle_speed_raw)
+            Row.VEHICLE_FUEL_LEVEL -> context.getString(R.string.row_vehicle_fuel_level)
+            Row.VEHICLE_EV_BATTERY -> context.getString(R.string.row_vehicle_ev_battery)
+            Row.VEHICLE_RANGE -> context.getString(R.string.row_vehicle_range)
+            Row.VEHICLE_ODOMETER -> context.getString(R.string.row_vehicle_odometer)
+            Row.VEHICLE_FUEL_TYPES -> context.getString(R.string.row_vehicle_fuel_types)
+            Row.VEHICLE_EV_CONNECTORS -> context.getString(R.string.row_vehicle_ev_connectors)
+            Row.VEHICLE_DATA_STATUS -> context.getString(R.string.row_vehicle_data_status)
+            Row.LOCATION_GPS -> context.getString(R.string.row_location_gps)
+            Row.LOCATION_NETWORK -> context.getString(R.string.row_location_network)
+            Row.LOCATION_NETWORK_SPEED,
+            Row.LOCATION_GPS_SPEED,
+            -> context.getString(R.string.row_location_speed)
+            Row.LOCATION_NETWORK_BEARING,
+            Row.LOCATION_GPS_BEARING,
+            -> context.getString(R.string.row_location_bearing)
+            Row.LOCATION_DEVICE_HEADING ->
+                context.getString(R.string.row_location_device_heading)
+            Row.LOCATION_DEVICE_HEADING_ACCURACY ->
+                context.getString(R.string.row_location_device_heading_accuracy)
+            Row.LOCATION_DEVICE_HEADING_SOURCE ->
+                context.getString(R.string.row_location_device_heading_source)
+            Row.LOCATION_GOOGLE_STATUS -> context.getString(R.string.row_location_google_status)
+            Row.LOCATION_GOOGLE_COORDINATES ->
+                context.getString(R.string.row_location_coordinates)
+            Row.LOCATION_NETWORK_COORDINATES,
+            Row.LOCATION_GPS_COORDINATES,
+            -> context.getString(R.string.row_location_coordinates)
+            Row.LOCATION_GOOGLE_ACCURACY ->
+                context.getString(R.string.row_location_accuracy)
+            Row.LOCATION_GOOGLE_ALTITUDE ->
+                context.getString(R.string.row_location_altitude)
+            Row.LOCATION_GOOGLE_SPEED ->
+                context.getString(R.string.row_location_speed)
+            Row.LOCATION_GOOGLE_BEARING ->
+                context.getString(R.string.row_location_bearing)
+            Row.LOCATION_GOOGLE_FIX_AGE ->
+                context.getString(R.string.row_location_fix_age)
+            Row.LOCATION_NETWORK_ACCURACY,
+            Row.LOCATION_GPS_ACCURACY,
+            -> context.getString(R.string.row_location_accuracy)
+            Row.LOCATION_NETWORK_ALTITUDE,
+            Row.LOCATION_GPS_ALTITUDE,
+            -> context.getString(R.string.row_location_altitude)
+            Row.LOCATION_NETWORK_PROVIDER,
+            Row.LOCATION_GPS_PROVIDER,
+            -> context.getString(R.string.row_location_provider)
+            Row.LOCATION_NETWORK_FIX_AGE,
+            Row.LOCATION_GPS_FIX_AGE,
+            -> context.getString(R.string.row_location_fix_age)
+            Row.LOCATION_GNSS_SATELLITES ->
+                context.getString(R.string.row_location_gnss_satellites)
+            Row.LOCATION_GNSS_FREQUENCY_BANDS ->
+                context.getString(R.string.row_location_gnss_frequency_bands)
+            Row.LOCATION_GPS_VERTICAL_ACCURACY ->
+                context.getString(R.string.row_location_gps_vertical_accuracy)
+            Row.LOCATION_GPS_SPEED_ACCURACY ->
+                context.getString(R.string.row_location_gps_speed_accuracy)
+            Row.LOCATION_GPS_BEARING_ACCURACY ->
+                context.getString(R.string.row_location_gps_bearing_accuracy)
+            Row.LOCATION_GPS_MOCK -> context.getString(R.string.row_location_gps_mock)
             else -> key
         }
 
@@ -363,12 +629,15 @@ object DeviceInfoUiShared {
     fun valueNotAvailableLabel(context: Context): String =
         context.notAvailableText()
 
-    fun bluetoothState(context: Context, on: Boolean?): String =
-        when (on) {
-            null -> valueNotAvailableLabel(context)
-            true -> onOff(context, true)
-            false -> onOff(context, false)
+    fun bluetoothState(context: Context, on: Boolean?, permissionRequired: Boolean = false): String =
+        when {
+            on != null -> onOff(context, on)
+            permissionRequired -> context.getString(R.string.value_permission_required)
+            else -> valueNotAvailableLabel(context)
         }
+
+    fun wifiState(context: Context, on: Boolean?, permissionRequired: Boolean = false): String =
+        bluetoothState(context, on, permissionRequired)
 
     fun densityLabel(dpi: Int): String =
         if (dpi > 0) String.format(Locale.US, "%d dpi", dpi) else "—"
@@ -554,7 +823,7 @@ object DeviceInfoUiShared {
     fun cycleCountText(context: Context, c: Int?): String =
         when {
             c == null -> context.getString(R.string.not_available)
-            c <= 0 -> "—"
+            c < 0 -> "—"
             else -> c.toString()
         }
 
@@ -604,6 +873,19 @@ object DeviceInfoUiShared {
         }
     }
 
+    /** Shown only while plugged/charging and a positive ETA is available. */
+    fun chargeTimeRemainingRowVisible(info: DeviceInfo): Boolean =
+        chargeTimeRemainingRowVisible(info.chargeTimeRemainingMs, info.chargingStatus, info.plugged)
+
+    fun chargeTimeRemainingRowVisible(
+        chargeTimeRemainingMs: Long?,
+        chargingStatus: String,
+        plugged: String,
+    ): Boolean {
+        if (chargeTimeRemainingMs == null || chargeTimeRemainingMs <= 0L) return false
+        return chargingStatus == "Charging" || plugged != "None"
+    }
+
     fun displayDiagonalText(context: Context, inches: Float): String =
         if (inches <= 0f || !inches.isFinite()) {
             context.getString(R.string.not_available)
@@ -640,12 +922,6 @@ object DeviceInfoUiShared {
             else -> R.drawable.ic_row_temp_normal
         }
 
-    fun thermalIconRes(thermalSummary: String): Int {
-        val temp = Regex("""([\d.]+)\s*°C""").find(thermalSummary)?.groupValues?.get(1)?.toFloatOrNull()
-        if (temp != null) return temperatureIconRes(temp)
-        return R.drawable.ic_row_temp_normal
-    }
-
     fun pluggedIconRes(plugged: String): Int =
         when (plugged) {
             "AC" -> R.drawable.ic_row_plugged
@@ -662,11 +938,14 @@ object DeviceInfoUiShared {
             "Bluetooth" -> R.drawable.ic_row_bluetooth
             "Online" -> R.drawable.ic_row_wifi
             "Offline" -> R.drawable.ic_row_offline
-            else -> R.drawable.ic_row_unknown
+            else -> R.drawable.ic_row_devices_other
         }
 
-    /** Phone: RAM, CPU freq, display rotation (battery updates via sticky broadcast, not this poll). */
+    /** Phone: RAM, storage, CPU freq, cellular signal (not battery — see [PHONE_BATTERY_POLL_INTERVAL_MS]). */
     const val PHONE_LIVE_POLL_INTERVAL_MS = 5_000L
+
+    /** Poll: current, voltage, power, charge ETA — never mixed with broadcast slice. */
+    const val PHONE_BATTERY_POLL_INTERVAL_MS = 1_000L
 
     /** Android Auto: only cadence for live rows (pin, dòng, công suất, RAM); no broadcast rebuilds. */
     const val CAR_TELEMETRY_POLL_INTERVAL_MS = 5_000L
